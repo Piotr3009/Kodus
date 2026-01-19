@@ -2,7 +2,7 @@
  * Stałe aplikacji AI Agent Dashboard
  */
 
-import type { StreamStatus, LLMSource } from './types';
+import type { StreamStatus, LLMSource, AISender, AIPersonality, ChatMode, ChatModeInfo } from './types';
 
 // Maksymalna liczba iteracji review
 export const MAX_ITERATIONS = 3;
@@ -172,4 +172,97 @@ export const detectLanguage = (code: string, filename?: string): string => {
   }
 
   return 'typescript'; // Domyślnie TypeScript
+};
+
+// ==========================================
+// STAŁE DLA CHAT INTERFACE Z MULTI-AI TEAM
+// ==========================================
+
+// Osobowości AI - kolory, role, avatary
+export const AI_PERSONALITIES: Record<AISender, AIPersonality> = {
+  claude: {
+    name: 'claude',
+    displayName: 'Claude',
+    color: '#8B5CF6',
+    bgColor: '#8B5CF620',
+    role: 'Architekt & Lead Developer',
+    avatar: '🟣'
+  },
+  gpt: {
+    name: 'gpt',
+    displayName: 'GPT',
+    color: '#22C55E',
+    bgColor: '#22C55E20',
+    role: 'Code Reviewer & Pomysły',
+    avatar: '🟢'
+  },
+  gemini: {
+    name: 'gemini',
+    displayName: 'Gemini',
+    color: '#3B82F6',
+    bgColor: '#3B82F620',
+    role: 'UI/UX Specialist',
+    avatar: '🔵'
+  }
+};
+
+// Kolor użytkownika
+export const USER_COLOR = '#6B7280';
+export const USER_BG_COLOR = '#6B728020';
+
+// Tryby chatu
+export const CHAT_MODES: Record<ChatMode, ChatModeInfo> = {
+  solo: {
+    label: 'Solo',
+    description: 'Tylko Claude - szybkie odpowiedzi',
+    icons: '🟣'
+  },
+  duo: {
+    label: 'Duo',
+    description: 'Claude + GPT review',
+    icons: '🟣🟢'
+  },
+  team: {
+    label: 'Team',
+    description: 'Pełny zespół: Claude + GPT + Gemini',
+    icons: '🟣🟢🔵'
+  }
+};
+
+// Triggery do generowania kodu
+export const GENERATE_TRIGGERS = [
+  'ok robimy',
+  'start',
+  'zaczynamy',
+  'generuj',
+  'do dzieła',
+  "let's go",
+  'lets go',
+  'budujemy',
+  'koduj',
+  'pisz kod',
+  'napisz kod'
+];
+
+// Sprawdza czy wiadomość jest triggerem do generowania
+export const isGenerateAction = (message: string): boolean => {
+  const lower = message.toLowerCase().trim();
+  return GENERATE_TRIGGERS.some(trigger => lower.includes(trigger));
+};
+
+// Limit historii wiadomości do kontekstu AI
+export const CHAT_HISTORY_LIMIT = 20;
+
+// API endpoints dla chatu
+export const CHAT_API_ENDPOINTS = {
+  CHAT: '/api/chat',
+  CONVERSATIONS: '/api/conversations',
+};
+
+// Skróty klawiaturowe dla chatu
+export const CHAT_KEYBOARD_SHORTCUTS = {
+  SEND: 'Ctrl+Enter',
+  NEW_CONVERSATION: 'Ctrl+N',
+  TOGGLE_SIDEBAR: 'Ctrl+B',
+  FOCUS_INPUT: 'Ctrl+K',
 };

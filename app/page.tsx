@@ -1,133 +1,66 @@
 /**
- * Główna strona AI Agent Dashboard
- * Layout: sidebar (historia) + main (input/output)
+ * Główna strona Kodus - Chat Interface z Multi-AI Team
+ * Layout: sidebar (konwersacje) + main (chat + editor)
  */
 
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Bot, Menu, X, RefreshCw } from 'lucide-react';
+import { Bot, Menu, X, Github, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Komponenty
-import { TaskInput } from '@/components/TaskInput';
-import { StatusBar } from '@/components/StatusBar';
-import { CodeOutput } from '@/components/CodeOutput';
-import { FilesList } from '@/components/FilesList';
-import { TaskHistory } from '@/components/TaskHistory';
+import { ChatPanel } from '@/components/chat/ChatPanel';
+import { ConversationList } from '@/components/sidebar/ConversationList';
+import { CodeEditor } from '@/components/editor/CodeEditor';
+import { ModeSelector } from '@/components/chat/ModeSelector';
 import { Button } from '@/components/ui/button';
 
 // Hooks
 import { useProjects } from '@/hooks/useProjects';
-import { useTasks } from '@/hooks/useTasks';
-import { useTaskStream } from '@/hooks/useTaskStream';
+import { useChat } from '@/hooks/useChat';
+import { useCodeEditor } from '@/hooks/useCodeEditor';
 
 // Typy i stałe
-import type { TaskFormState, Task, StorageFile } from '@/lib/types';
-import { API_ENDPOINTS } from '@/lib/constants';
+import type { ChatMode, Project } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-export default function DashboardPage() {
+export default function KodusChatPage() {
   // Stan UI
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [outputCode, setOutputCode] = useState<string | null>(null);
-  const [outputFiles, setOutputFiles] = useState<StorageFile[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [mobileView, setMobileView] = useState<'chat' | 'editor'>('chat');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Hooks do danych
-  const {
-    state: projectsState,
-    refresh: refreshProjects,
-  } = useProjects();
+  // Pobierz projekty
+  const { state: projectsState } = useProjects();
 
-  const {
-    state: tasksState,
-    filters: taskFilters,
-    setFilters: setTaskFilters,
-    selectTask,
-    refresh: refreshTasks,
-  } = useTasks();
-
-  // Hook SSE
-  const {
-    state: streamState,
-    connect: connectStream,
-    reset: resetStream,
-  } = useTaskStream({
-    onComplete: (code, files) => {
-      setOutputCode(code);
-      setOutputFiles(files);
-      setIsProcessing(false);
-      refreshTasks();
-      toast.success('Zadanie zakończone pomyślnie!');
-    },
-    onError: (error) => {
-      setIsProcessing(false);
-      toast.error(`Błąd: ${error}`);
-    },
+  // Chat hook
+  const chat = useChat({
+    projectId: selectedProjectId || undefined,
+    onError: (error) => toast.error(error),
   });
 
-  // Obsługa wysłania zadania
-  const handleSubmitTask = useCallback(
-    async (formData: TaskFormState) => {
-      try {
-        setIsProcessing(true);
-        setOutputCode(null);
-        setOutputFiles([]);
-        resetStream();
+  // Code editor hook
+  const editor = useCodeEditor();
 
-        // Wyślij request do webhook
-        const response = await fetch(API_ENDPOINTS.WEBHOOK, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            task: formData.task,
-            project_id: formData.project_id,
-            mode: formData.mode,
-          }),
-        });
+  // Załaduj konwersacje przy starcie
+  useEffect(() => {
+    chat.loadConversations();
+  }, []);
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Błąd wysyłania zadania');
-        }
-
-        const data = await response.json();
-
-        // Połącz ze streamem SSE
-        if (data.task_id) {
-          connectStream(data.task_id);
-          toast.info('Zadanie wysłane, rozpoczynam przetwarzanie...');
-        }
-      } catch (error) {
-        setIsProcessing(false);
-        const message = error instanceof Error ? error.message : 'Nieznany błąd';
-        toast.error(message);
-        throw error;
-      }
+  // Wstaw kod z chatu do edytora
+  const handleInsertCode = useCallback(
+    (code: string, filename?: string) => {
+      editor.insertCode(code, filename);
+      toast.success('Kod wstawiony do edytora');
+      // Na mobile - przełącz do widoku edytora
+      setMobileView('editor');
     },
-    [connectStream, resetStream]
+    [editor]
   );
 
-  // Obsługa wyboru zadania z historii
-  const handleTaskSelect = useCallback(
-    async (task: Task) => {
-      const fullTask = await selectTask(task.id);
-
-      if (fullTask?.final_code) {
-        setOutputCode(fullTask.final_code);
-        toast.info(`Załadowano wynik: ${task.title}`);
-      } else {
-        setOutputCode(null);
-        toast.info(`Wybrano zadanie: ${task.title}`);
-      }
-    },
-    [selectTask]
-  );
-
-  // Obsługa skrótów klawiaturowych (globalnych)
+  // Obsługa skrótów klawiaturowych
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl+B = toggle sidebar
@@ -135,14 +68,32 @@ export default function DashboardPage() {
         e.preventDefault();
         setSidebarOpen((prev) => !prev);
       }
+      // Ctrl+N = nowa rozmowa
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        chat.startNewConversation();
+        toast.info('Nowa rozmowa');
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [chat]);
+
+  // Filtruj konwersacje
+  const filteredConversations = (chat as any).conversations?.filter(
+    (c: any) =>
+      c.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      (!selectedProjectId || c.project_id === selectedProjectId)
+  ) || [];
+
+  // Wybrany projekt
+  const selectedProject = projectsState.projects.find(
+    (p) => p.id === selectedProjectId
+  );
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-zinc-950 text-white">
       {/* Overlay dla mobile gdy sidebar otwarty */}
       {sidebarOpen && (
         <div
@@ -151,148 +102,197 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Sidebar - historia zadań */}
+      {/* Sidebar - lista konwersacji */}
       <aside
         className={cn(
-          'fixed lg:relative inset-y-0 left-0 z-30 w-80 bg-card border-r transform transition-transform duration-200 ease-in-out flex flex-col',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-0 lg:border-0'
+          'fixed lg:relative inset-y-0 left-0 z-30 w-72 bg-zinc-900 border-r border-zinc-800',
+          'transform transition-transform duration-200 ease-in-out flex flex-col',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-0 lg:border-0 lg:overflow-hidden'
         )}
       >
         {/* Header sidebar */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-3 border-b border-zinc-800">
           <div className="flex items-center gap-2">
-            <Bot className="h-6 w-6 text-primary" />
-            <span className="font-semibold">AI Dashboard</span>
+            <Bot className="h-5 w-5 text-purple-500" />
+            <span className="font-semibold text-sm">Kodus</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                refreshTasks();
-                refreshProjects();
-              }}
-              title="Odśwież"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="lg:hidden"
-              onClick={() => setSidebarOpen(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden h-8 w-8"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </div>
 
-        {/* Historia zadań */}
-        <div className="flex-1 overflow-hidden p-4">
-          <TaskHistory
-            tasks={tasksState.tasks}
-            projects={projectsState.projects}
-            selectedTaskId={tasksState.selectedTaskId}
-            onTaskSelect={handleTaskSelect}
-            isLoading={tasksState.isLoading}
-            filters={taskFilters}
-            onFiltersChange={setTaskFilters}
-          />
-        </div>
+        {/* Lista konwersacji */}
+        <ConversationList
+          conversations={filteredConversations}
+          selectedId={chat.conversationId}
+          onSelect={(id) => {
+            chat.loadConversation(id);
+            setSidebarOpen(false);
+          }}
+          onNew={() => {
+            chat.startNewConversation();
+            setSidebarOpen(false);
+          }}
+          isLoading={false}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+        />
       </aside>
 
       {/* Main content */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Header mobile */}
-        <header className="flex items-center gap-4 p-4 border-b lg:hidden">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
+        {/* Header */}
+        <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
+          {/* Left: menu + project */}
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+
+            {/* Project selector */}
+            <div className="relative">
+              <button
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors text-sm"
+              >
+                <span className="text-zinc-400">Projekt:</span>
+                <span className="font-medium">
+                  {selectedProject?.name || 'Wszystkie'}
+                </span>
+                <ChevronDown size={14} className="text-zinc-500" />
+              </button>
+              {/* TODO: Dropdown z projektami */}
+            </div>
+          </div>
+
+          {/* Center: title (desktop) */}
+          <div className="hidden lg:flex items-center gap-2">
+            <Bot className="h-5 w-5 text-purple-500" />
+            <span className="font-semibold">Kodus Chat</span>
+            <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">
+              Multi-AI Team
+            </span>
+          </div>
+
+          {/* Right: GitHub (stub) */}
           <div className="flex items-center gap-2">
-            <Bot className="h-5 w-5 text-primary" />
-            <span className="font-semibold">AI Agent Dashboard</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-zinc-400 hover:text-white"
+              onClick={() => toast.info('GitHub integration coming soon!')}
+            >
+              <Github className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">GitHub</span>
+            </Button>
           </div>
         </header>
 
-        {/* Content area */}
-        <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6">
-          {/* Header desktop */}
-          <div className="hidden lg:flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {!sidebarOpen && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSidebarOpen(true)}
-                >
-                  <Menu className="h-5 w-5" />
-                </Button>
-              )}
-              <div>
-                <h1 className="text-2xl font-bold">AI Agent Dashboard</h1>
-                <p className="text-muted-foreground">
-                  System multi-LLM do generowania kodu
-                </p>
-              </div>
+        {/* Mobile view tabs */}
+        <div className="lg:hidden flex border-b border-zinc-800">
+          <button
+            onClick={() => setMobileView('chat')}
+            className={cn(
+              'flex-1 py-2 text-sm font-medium transition-colors',
+              mobileView === 'chat'
+                ? 'text-white border-b-2 border-purple-500'
+                : 'text-zinc-500 hover:text-white'
+            )}
+          >
+            Chat
+          </button>
+          <button
+            onClick={() => setMobileView('editor')}
+            className={cn(
+              'flex-1 py-2 text-sm font-medium transition-colors',
+              mobileView === 'editor'
+                ? 'text-white border-b-2 border-purple-500'
+                : 'text-zinc-500 hover:text-white'
+            )}
+          >
+            Edytor
+            {editor.hasUnsavedChanges && (
+              <span className="ml-1 w-2 h-2 rounded-full bg-orange-500 inline-block" />
+            )}
+          </button>
+        </div>
+
+        {/* Main area - flex layout (desktop) / tabs (mobile) */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {/* Desktop: flex layout with chat (60%) and editor (40%) */}
+          <div className="hidden lg:flex lg:flex-col h-full">
+            {/* Chat Panel - 60% */}
+            <div className="flex-[6] min-h-0 overflow-hidden">
+              <ChatPanel
+                messages={chat.messages}
+                onSend={chat.sendMessage}
+                isLoading={chat.isLoading}
+                currentlyTyping={chat.currentlyTyping}
+                typingQueue={chat.typingQueue}
+                onInsertCode={handleInsertCode}
+              />
+            </div>
+
+            {/* Divider */}
+            <div className="h-1 bg-zinc-800 flex-shrink-0" />
+
+            {/* Code Editor - 40% */}
+            <div className="flex-[4] min-h-0 overflow-hidden">
+              <CodeEditor
+                files={editor.files}
+                activeFileId={editor.activeFile?.id || null}
+                onFileSelect={editor.setActiveFile}
+                onFileChange={editor.updateFileContent}
+                onFileClose={editor.closeFile}
+                onNewFile={editor.createFile}
+                hasUnsavedChanges={editor.hasUnsavedChanges}
+                onSave={() => {
+                  (editor as any).markAllSaved?.();
+                  toast.success('Zapisano!');
+                }}
+                onPush={() => toast.info('Push to GitHub coming soon!')}
+              />
             </div>
           </div>
 
-          {/* Task Input */}
-          <section className="bg-card rounded-xl border p-4 lg:p-6">
-            <h2 className="text-lg font-semibold mb-4">Nowe zadanie</h2>
-            <TaskInput
-              projects={projectsState.projects}
-              projectsLoading={projectsState.isLoading}
-              onSubmit={handleSubmitTask}
-              isDisabled={isProcessing}
-            />
-          </section>
-
-          {/* Status Bar - pokazuj tylko podczas przetwarzania lub gdy stream aktywny */}
-          {(isProcessing || streamState.isConnected || streamState.status !== 'idle') && (
-            <section>
-              <StatusBar
-                status={streamState.status}
-                iteration={streamState.currentIteration}
-                maxIterations={streamState.maxIterations}
-                message={streamState.message}
-                elapsedTime={streamState.elapsedTime}
+          {/* Mobile: tabs */}
+          <div className="lg:hidden h-full">
+            {mobileView === 'chat' ? (
+              <ChatPanel
+                messages={chat.messages}
+                onSend={chat.sendMessage}
+                isLoading={chat.isLoading}
+                currentlyTyping={chat.currentlyTyping}
+                typingQueue={chat.typingQueue}
+                onInsertCode={handleInsertCode}
               />
-            </section>
-          )}
-
-          {/* Wyniki - Code Output + Files */}
-          <section className="grid gap-6 lg:grid-cols-3">
-            {/* Code Output - zajmuje 2/3 */}
-            <div className="lg:col-span-2">
-              <h2 className="text-lg font-semibold mb-4">Wygenerowany kod</h2>
-              <CodeOutput
-                code={outputCode || streamState.code}
-                isLoading={isProcessing && !outputCode && !streamState.code}
+            ) : (
+              <CodeEditor
+                files={editor.files}
+                activeFileId={editor.activeFile?.id || null}
+                onFileSelect={editor.setActiveFile}
+                onFileChange={editor.updateFileContent}
+                onFileClose={editor.closeFile}
+                onNewFile={editor.createFile}
+                hasUnsavedChanges={editor.hasUnsavedChanges}
+                onSave={() => {
+                  (editor as any).markAllSaved?.();
+                  toast.success('Zapisano!');
+                }}
+                onPush={() => toast.info('Push to GitHub coming soon!')}
               />
-            </div>
-
-            {/* Files List - zajmuje 1/3 */}
-            <div className="lg:col-span-1">
-              <h2 className="text-lg font-semibold mb-4">Pliki</h2>
-              <FilesList
-                files={outputFiles.length > 0 ? outputFiles : streamState.files}
-                isLoading={isProcessing && outputFiles.length === 0 && streamState.files.length === 0}
-              />
-            </div>
-          </section>
+            )}
+          </div>
         </div>
-
-        {/* Footer */}
-        <footer className="border-t p-4 text-center text-xs text-muted-foreground">
-          <p>
-            AI Agent Dashboard • Claude + GPT-4 + Gemini • Powered by N8N
-          </p>
-        </footer>
       </main>
     </div>
   );
