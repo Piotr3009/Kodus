@@ -80,13 +80,50 @@ export function useCodeEditor(): UseCodeEditorReturn {
   }, [activeFileId]);
 
   // Wstaw kod do edytora (tworzy nowy plik lub aktualizuje aktywny)
-  const insertCode = useCallback((code: string, filename?: string) => {
-    const language = detectLanguage(code, filename);
-    const name = filename || `code-${Date.now()}.${language === 'typescript' ? 'tsx' : language}`;
+  const insertCode = useCallback((code: string, filename?: string, providedLanguage?: string) => {
+    // Użyj podanego języka lub wykryj automatycznie
+    const language = providedLanguage || detectLanguage(code, filename);
+
+    // Generuj rozszerzenie na podstawie języka
+    const getExtension = (lang: string): string => {
+      const extensions: Record<string, string> = {
+        typescript: 'tsx',
+        javascript: 'js',
+        python: 'py',
+        css: 'css',
+        html: 'html',
+        json: 'json',
+        sql: 'sql',
+        markdown: 'md',
+        rust: 'rs',
+        go: 'go',
+      };
+      return extensions[lang] || lang;
+    };
+
+    const name = filename || `code-${Date.now()}.${getExtension(language)}`;
+
+    // Jeśli podano filename, sprawdź czy plik już istnieje
+    if (filename) {
+      const existingFile = files.find(f => f.name === filename);
+      if (existingFile) {
+        // Aktualizuj istniejący plik
+        updateFileContent(existingFile.id, code);
+        setActiveFileId(existingFile.id);
+        return;
+      }
+    }
 
     // Jeśli jest aktywny plik i jest pusty, wstaw tam
     if (activeFile && !activeFile.content.trim()) {
-      updateFileContent(activeFile.id, code);
+      // Zaktualizuj również nazwę i język jeśli podano
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === activeFile.id
+            ? { ...f, content: code, name: filename || f.name, language, isDirty: true }
+            : f
+        )
+      );
       return;
     }
 
@@ -102,7 +139,7 @@ export function useCodeEditor(): UseCodeEditorReturn {
 
     setFiles((prev) => [...prev, newFile]);
     setActiveFileId(id);
-  }, [activeFile, updateFileContent]);
+  }, [activeFile, files, updateFileContent]);
 
   // Oznacz plik jako zapisany
   const markFileSaved = useCallback((id: string) => {

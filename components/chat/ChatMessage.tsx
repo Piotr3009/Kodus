@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 interface ChatMessageProps {
   message: ChatMessageType;
-  onInsertCode?: (code: string, filename?: string) => void;
+  onInsertCode?: (code: string, filename?: string, language?: string) => void;
 }
 
 // Formatowanie timestamp
@@ -26,37 +26,94 @@ function formatTime(dateString: string): string {
   return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Wyciąga nazwę pliku z pierwszej linii kodu
+ * Obsługuje formaty: // filename.tsx, # filename.py, -- filename.sql
+ */
+function extractFilename(code: string): { filename?: string; cleanCode: string } {
+  const lines = code.split('\n');
+  if (lines.length === 0) return { cleanCode: code };
+
+  const firstLine = lines[0].trim();
+
+  // Wzorce komentarzy z nazwą pliku
+  const patterns = [
+    /^\/\/\s*(.+\.\w+)\s*$/,          // // filename.tsx
+    /^\/\*\s*(.+\.\w+)\s*\*\/\s*$/,   // /* filename.tsx */
+    /^#\s*(.+\.\w+)\s*$/,              // # filename.py
+    /^--\s*(.+\.\w+)\s*$/,             // -- filename.sql
+    /^<!--\s*(.+\.\w+)\s*-->$/,        // <!-- filename.html -->
+  ];
+
+  for (const pattern of patterns) {
+    const match = firstLine.match(pattern);
+    if (match) {
+      // Sprawdź czy to wygląda jak nazwa pliku (ma rozszerzenie)
+      const potentialFilename = match[1].trim();
+      if (/^[\w\-./]+\.\w+$/.test(potentialFilename)) {
+        return {
+          filename: potentialFilename,
+          cleanCode: lines.slice(1).join('\n').trim()
+        };
+      }
+    }
+  }
+
+  return { cleanCode: code };
+}
+
 // Komponent dla code block
 function CodeBlock({
   code,
   language,
+  filename: providedFilename,
   onInsert,
 }: {
   code: string;
   language?: string;
-  onInsert?: (code: string) => void;
+  filename?: string;
+  onInsert?: (code: string, filename?: string, language?: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
+  // Wyciągnij filename z kodu jeśli nie został podany
+  const { filename: extractedFilename, cleanCode } = extractFilename(code);
+  const filename = providedFilename || extractedFilename;
+  const displayCode = extractedFilename ? cleanCode : code;
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(code);
+    await navigator.clipboard.writeText(displayCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleInsert = () => {
+    if (onInsert) {
+      onInsert(displayCode, filename, language);
+    }
   };
 
   return (
     <div className="relative group my-3 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-700">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-zinc-800 border-b border-zinc-700">
-        <span className="text-xs text-zinc-400 font-mono">{language || 'code'}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-400 font-mono">{language || 'code'}</span>
+          {filename && (
+            <span className="text-xs text-purple-400 font-mono bg-purple-500/10 px-1.5 py-0.5 rounded">
+              {filename}
+            </span>
+          )}
+        </div>
         <div className="flex gap-1">
           {onInsert && (
             <button
-              onClick={() => onInsert(code)}
-              className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
-              title="Wstaw do edytora"
+              onClick={handleInsert}
+              className="flex items-center gap-1 px-2 py-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors text-xs"
+              title={`Wstaw do edytora${filename ? ` jako ${filename}` : ''}`}
             >
               <FileCode size={14} />
+              <span className="hidden sm:inline">Wstaw</span>
             </button>
           )}
           <button
@@ -70,7 +127,7 @@ function CodeBlock({
       </div>
       {/* Code */}
       <pre className="p-4 overflow-x-auto text-sm">
-        <code className={`language-${language || 'plaintext'}`}>{code}</code>
+        <code className={`language-${language || 'plaintext'}`}>{displayCode}</code>
       </pre>
     </div>
   );

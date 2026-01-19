@@ -17,7 +17,7 @@ interface ChatPanelProps {
   isLoading: boolean;
   currentlyTyping: AISender | null;
   typingQueue?: AISender[];
-  onInsertCode?: (code: string, filename?: string) => void;
+  onInsertCode?: (code: string, filename?: string, language?: string) => void;
   defaultMode?: ChatMode;
 }
 

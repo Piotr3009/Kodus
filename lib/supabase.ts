@@ -16,6 +16,7 @@ import type {
   ChatMessage,
   ChatMode,
   MessageSender,
+  Preference,
 } from './types';
 import { STORAGE_BUCKET, TASK_HISTORY_LIMIT } from './constants';
 
@@ -523,4 +524,133 @@ export async function getConversationHistory(
 
   // Odwróć kolejność żeby mieć chronologicznie
   return (data || []).reverse();
+}
+
+// ============================================
+// PREFERENCJE UŻYTKOWNIKA
+// ============================================
+
+/**
+ * Pobiera wszystkie preferencje użytkownika
+ */
+export async function getPreferences(): Promise<Preference[]> {
+  try {
+    const { data, error } = await supabase
+      .from('preferences')
+      .select('*')
+      .order('category', { ascending: true });
+
+    if (error) {
+      // Jeśli tabela nie istnieje, zwróć pustą tablicę
+      if (error.code === '42P01') {
+        console.warn('Tabela preferences nie istnieje. Utwórz ją w Supabase.');
+        return [];
+      }
+      console.error('Błąd pobierania preferencji:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania preferencji:', error);
+    return [];
+  }
+}
+
+/**
+ * Zapisuje preferencję (upsert - aktualizuje jeśli istnieje)
+ */
+export async function savePreference(
+  category: string,
+  key: string,
+  value: string
+): Promise<void> {
+  try {
+    // Sprawdź czy preferencja już istnieje
+    const { data: existing } = await supabase
+      .from('preferences')
+      .select('id')
+      .eq('key', key)
+      .single();
+
+    if (existing) {
+      // Aktualizuj istniejącą
+      const { error } = await supabase
+        .from('preferences')
+        .update({
+          category,
+          value,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id);
+
+      if (error) {
+        console.error('Błąd aktualizacji preferencji:', error);
+        throw new Error(`Nie udało się zaktualizować preferencji: ${error.message}`);
+      }
+    } else {
+      // Utwórz nową
+      const { error } = await supabase
+        .from('preferences')
+        .insert({
+          category,
+          key,
+          value,
+        });
+
+      if (error) {
+        console.error('Błąd zapisywania preferencji:', error);
+        throw new Error(`Nie udało się zapisać preferencji: ${error.message}`);
+      }
+    }
+  } catch (error) {
+    console.error('Błąd zapisywania preferencji:', error);
+    throw error;
+  }
+}
+
+/**
+ * Usuwa preferencję po kluczu
+ */
+export async function deletePreference(key: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('preferences')
+      .delete()
+      .eq('key', key);
+
+    if (error) {
+      console.error('Błąd usuwania preferencji:', error);
+      throw new Error(`Nie udało się usunąć preferencji: ${error.message}`);
+    }
+  } catch (error) {
+    console.error('Błąd usuwania preferencji:', error);
+    throw error;
+  }
+}
+
+/**
+ * Pobiera preferencję po kluczu
+ */
+export async function getPreferenceByKey(key: string): Promise<Preference | null> {
+  try {
+    const { data, error } = await supabase
+      .from('preferences')
+      .select('*')
+      .eq('key', key)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null; // Nie znaleziono
+      }
+      console.error('Błąd pobierania preferencji:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Błąd pobierania preferencji:', error);
+    return null;
+  }
 }

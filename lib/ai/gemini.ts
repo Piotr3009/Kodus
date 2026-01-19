@@ -4,7 +4,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { ChatMessage, AIContext } from '../types';
+import type { ChatMessage, AIContext, Preference } from '../types';
 
 // Leniwa inicjalizacja klienta Google AI
 let genaiClient: GoogleGenerativeAI | null = null;
@@ -59,6 +59,16 @@ function formatHistoryForGemini(history: ChatMessage[]): string {
 }
 
 /**
+ * Formatuje preferencje do czytelnego formatu dla AI
+ */
+function formatPreferences(preferences: Preference[]): string {
+  if (!preferences || preferences.length === 0) return '';
+
+  const lines = preferences.map(p => `- ${p.key}: ${p.value}`);
+  return `\n\nPreferencje użytkownika:\n${lines.join('\n')}`;
+}
+
+/**
  * Buduje kontekst z informacjami o projekcie
  */
 function buildContextInfo(context?: AIContext): string {
@@ -68,6 +78,11 @@ function buildContextInfo(context?: AIContext): string {
 
   if (context.project) {
     info += `\nProjekt: ${context.project.name}`;
+  }
+
+  // Dodaj preferencje użytkownika
+  if (context.preferences && context.preferences.length > 0) {
+    info += formatPreferences(context.preferences);
   }
 
   return info;
