@@ -12,6 +12,10 @@ import type {
   LLMResponse,
   StorageFile,
   TaskFilters,
+  Conversation,
+  ChatMessage,
+  ChatMode,
+  MessageSender,
 } from './types';
 import { STORAGE_BUCKET, TASK_HISTORY_LIMIT } from './constants';
 
@@ -342,4 +346,181 @@ export function subscribeToTask(
  */
 export async function unsubscribe(channel: ReturnType<typeof supabase.channel>) {
   await supabase.removeChannel(channel);
+}
+
+// ============================================
+// KONWERSACJE CHAT
+// ============================================
+
+/**
+ * Pobiera wszystkie konwersacje użytkownika
+ */
+export async function getConversations(projectId?: string): Promise<Conversation[]> {
+  let query = supabase
+    .from('conversations')
+    .select('*')
+    .order('updated_at', { ascending: false });
+
+  if (projectId) {
+    query = query.eq('project_id', projectId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Błąd pobierania konwersacji:', error);
+    throw new Error(`Nie udało się pobrać konwersacji: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Pobiera konwersację po ID
+ */
+export async function getConversationById(id: string): Promise<Conversation | null> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
+    }
+    console.error('Błąd pobierania konwersacji:', error);
+    throw new Error(`Nie udało się pobrać konwersacji: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Tworzy nową konwersację
+ */
+export async function createConversation(
+  title: string,
+  mode: ChatMode,
+  projectId?: string
+): Promise<Conversation> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .insert({
+      title,
+      mode,
+      project_id: projectId || null,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Błąd tworzenia konwersacji:', error);
+    throw new Error(`Nie udało się utworzyć konwersacji: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Aktualizuje konwersację
+ */
+export async function updateConversation(
+  id: string,
+  updates: Partial<Conversation>
+): Promise<Conversation> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Błąd aktualizacji konwersacji:', error);
+    throw new Error(`Nie udało się zaktualizować konwersacji: ${error.message}`);
+  }
+
+  return data;
+}
+
+// ============================================
+// WIADOMOŚCI CHAT
+// ============================================
+
+/**
+ * Pobiera wiadomości dla konwersacji
+ */
+export async function getChatMessages(
+  conversationId: string,
+  limit: number = 50
+): Promise<ChatMessage[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    console.error('Błąd pobierania wiadomości:', error);
+    throw new Error(`Nie udało się pobrać wiadomości: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Zapisuje wiadomość do bazy
+ */
+export async function saveChatMessage(
+  conversationId: string,
+  sender: MessageSender,
+  content: string
+): Promise<ChatMessage> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert({
+      conversation_id: conversationId,
+      sender,
+      content,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Błąd zapisywania wiadomości:', error);
+    throw new Error(`Nie udało się zapisać wiadomości: ${error.message}`);
+  }
+
+  // Aktualizuj updated_at konwersacji
+  await supabase
+    .from('conversations')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', conversationId);
+
+  return data;
+}
+
+/**
+ * Pobiera historię konwersacji dla AI (ostatnie N wiadomości)
+ */
+export async function getConversationHistory(
+  conversationId: string,
+  limit: number = 20
+): Promise<ChatMessage[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Błąd pobierania historii:', error);
+    return [];
+  }
+
+  // Odwróć kolejność żeby mieć chronologicznie
+  return (data || []).reverse();
 }

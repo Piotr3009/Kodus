@@ -207,3 +207,204 @@ export interface ModeToggleProps {
   mode: TaskMode;
   onChange: (mode: TaskMode) => void;
 }
+
+// ==========================================
+// TYPY DLA CHAT INTERFACE Z MULTI-AI TEAM
+// ==========================================
+
+// Nadawca wiadomości AI
+export type AISender = 'claude' | 'gpt' | 'gemini';
+
+// Nadawca wiadomości (user lub AI)
+export type MessageSender = 'user' | AISender;
+
+// Tryb chatu: solo/duo/team
+export type ChatMode = 'solo' | 'duo' | 'team';
+
+// Blok kodu w wiadomości
+export interface CodeBlock {
+  language: string;
+  code: string;
+  filename?: string;
+}
+
+// Wiadomość w chacie
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  sender: MessageSender;
+  content: string;
+  code_blocks?: CodeBlock[];
+  created_at: string;
+}
+
+// Rozmowa/konwersacja
+export interface Conversation {
+  id: string;
+  project_id?: string;
+  title: string;
+  mode: ChatMode;
+  created_at: string;
+  updated_at: string;
+}
+
+// Plik w edytorze kodu
+export interface EditorFile {
+  id: string;
+  name: string;
+  language: string;
+  content: string;
+  isDirty: boolean;
+}
+
+// Osobowość AI (kolor, rola, avatar)
+export interface AIPersonality {
+  name: AISender;
+  displayName: string;
+  color: string;
+  bgColor: string;
+  role: string;
+  avatar: string;
+}
+
+// Opis trybu chatu
+export interface ChatModeInfo {
+  label: string;
+  description: string;
+  icons: string;
+}
+
+// Event SSE dla chatu (streaming)
+export interface ChatStreamEvent {
+  type: 'typing' | 'message' | 'done' | 'error' | 'conversation_id';
+  sender?: MessageSender;
+  content?: string;
+  error?: string;
+  id?: string;
+}
+
+// Kontekst dla AI (historia, preferencje, projekt)
+export interface AIContext {
+  history: ChatMessage[];
+  preferences?: UserPreferences;
+  project?: Project;
+  editorContent?: string;
+}
+
+// Preferencje użytkownika
+export interface UserPreferences {
+  id: string;
+  preferred_mode: ChatMode;
+  theme: 'dark' | 'light';
+  language: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Request do /api/chat
+export interface ChatRequest {
+  conversation_id?: string;
+  message: string;
+  mode: ChatMode;
+  project_id?: string;
+  context?: {
+    editorContent?: string;
+    action?: 'generate' | 'discuss';
+  };
+}
+
+// Response z /api/chat (initial)
+export interface ChatResponse {
+  conversation_id: string;
+  success: boolean;
+  error?: string;
+}
+
+// Props dla komponentów chatu
+export interface ChatPanelProps {
+  conversationId: string | null;
+  projectId?: string;
+}
+
+export interface ChatMessageProps {
+  message: ChatMessage;
+  onInsertCode?: (code: string, filename?: string) => void;
+}
+
+export interface ChatInputProps {
+  onSend: (content: string, mode: ChatMode) => void;
+  isLoading: boolean;
+  currentlyTyping: AISender | null;
+  defaultMode?: ChatMode;
+}
+
+export interface ModeSelectorProps {
+  mode: ChatMode;
+  onChange: (mode: ChatMode) => void;
+  disabled?: boolean;
+}
+
+export interface TypingIndicatorProps {
+  sender: AISender;
+  queue?: AISender[];
+}
+
+export interface CodeEditorProps {
+  files: EditorFile[];
+  activeFileId: string | null;
+  onFileSelect: (id: string) => void;
+  onFileChange: (id: string, content: string) => void;
+  onFileClose: (id: string) => void;
+  onNewFile: (name: string, language: string) => void;
+}
+
+export interface FileTabsProps {
+  files: EditorFile[];
+  activeFileId: string | null;
+  onSelect: (id: string) => void;
+  onClose: (id: string) => void;
+}
+
+export interface ConversationListProps {
+  conversations: Conversation[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+  isLoading?: boolean;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+}
+
+// Hook returns
+export interface UseChatReturn {
+  messages: ChatMessage[];
+  sendMessage: (content: string, mode: ChatMode) => Promise<void>;
+  isLoading: boolean;
+  currentlyTyping: AISender | null;
+  typingQueue: AISender[];
+  startNewConversation: () => void;
+  loadConversation: (id: string) => Promise<void>;
+  conversationId: string | null;
+  error: string | null;
+  conversations: Conversation[];
+  loadConversations: () => Promise<void>;
+}
+
+export interface UseCodeEditorReturn {
+  files: EditorFile[];
+  activeFile: EditorFile | null;
+  setActiveFile: (id: string) => void;
+  updateFileContent: (id: string, content: string) => void;
+  createFile: (name: string, language: string) => void;
+  closeFile: (id: string) => void;
+  hasUnsavedChanges: boolean;
+  insertCode: (code: string, filename?: string) => void;
+}
+
+export interface UseGitHubReturn {
+  isConnected: boolean;
+  connect: (repoUrl: string) => Promise<void>;
+  push: (files: EditorFile[], message: string) => Promise<void>;
+  pull: () => Promise<void>;
+  status: 'disconnected' | 'synced' | 'ahead' | 'behind';
+}
