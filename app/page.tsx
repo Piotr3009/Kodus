@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Bot, Menu, X, Github, ChevronDown } from 'lucide-react';
+import { Bot, Menu, X, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Komponenty
@@ -15,11 +15,13 @@ import { ConversationList } from '@/components/sidebar/ConversationList';
 import { CodeEditor } from '@/components/editor/CodeEditor';
 import { ModeSelector } from '@/components/chat/ModeSelector';
 import { Button } from '@/components/ui/button';
+import { GitHubSync } from '@/components/github/GitHubSync';
 
 // Hooks
 import { useProjects } from '@/hooks/useProjects';
 import { useChat } from '@/hooks/useChat';
 import { useCodeEditor } from '@/hooks/useCodeEditor';
+import { useGitHub } from '@/hooks/useGitHub';
 
 // Typy i stałe
 import type { ChatMode, Project } from '@/lib/types';
@@ -44,6 +46,17 @@ export default function KodusChatPage() {
   // Code editor hook
   const editor = useCodeEditor();
 
+  // GitHub hook
+  const github = useGitHub();
+
+  // Callback do ładowania plików z GitHub do edytora
+  const handleGitHubFilesLoaded = useCallback((files: any[]) => {
+    // Dodaj pliki do edytora
+    for (const file of files) {
+      editor.insertCode(file.content, file.name, file.language);
+    }
+  }, [editor]);
+
   // Załaduj konwersacje przy starcie
   useEffect(() => {
     chat.loadConversations();
@@ -51,9 +64,9 @@ export default function KodusChatPage() {
 
   // Wstaw kod z chatu do edytora
   const handleInsertCode = useCallback(
-    (code: string, filename?: string) => {
-      editor.insertCode(code, filename);
-      toast.success('Kod wstawiony do edytora');
+    (code: string, filename?: string, language?: string) => {
+      editor.insertCode(code, filename, language);
+      toast.success(`Kod wstawiony${filename ? ` do ${filename}` : ' do edytora'}`);
       // Na mobile - przełącz do widoku edytora
       setMobileView('editor');
     },
@@ -183,17 +196,15 @@ export default function KodusChatPage() {
             </span>
           </div>
 
-          {/* Right: GitHub (stub) */}
+          {/* Right: GitHub sync */}
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-zinc-400 hover:text-white"
-              onClick={() => toast.info('GitHub integration coming soon!')}
-            >
-              <Github className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">GitHub</span>
-            </Button>
+            <GitHubSync
+              github={github}
+              files={editor.files}
+              onFilesLoaded={handleGitHubFilesLoaded}
+              onSuccess={(msg) => toast.success(msg)}
+              onError={(msg) => toast.error(msg)}
+            />
           </div>
         </header>
 
@@ -259,7 +270,19 @@ export default function KodusChatPage() {
                   (editor as any).markAllSaved?.();
                   toast.success('Zapisano!');
                 }}
-                onPush={() => toast.info('Push to GitHub coming soon!')}
+                onPush={async () => {
+                  if (!github.isConnected) {
+                    toast.info('Najpierw połącz się z GitHub');
+                    return;
+                  }
+                  const success = await github.push(editor.files, 'Update from Kodus');
+                  if (success) {
+                    (editor as any).markAllSaved?.();
+                    toast.success('Wysłano do GitHub!');
+                  } else {
+                    toast.error(github.error || 'Błąd wysyłania');
+                  }
+                }}
               />
             </div>
           </div>
@@ -288,7 +311,19 @@ export default function KodusChatPage() {
                   (editor as any).markAllSaved?.();
                   toast.success('Zapisano!');
                 }}
-                onPush={() => toast.info('Push to GitHub coming soon!')}
+                onPush={async () => {
+                  if (!github.isConnected) {
+                    toast.info('Najpierw połącz się z GitHub');
+                    return;
+                  }
+                  const success = await github.push(editor.files, 'Update from Kodus');
+                  if (success) {
+                    (editor as any).markAllSaved?.();
+                    toast.success('Wysłano do GitHub!');
+                  } else {
+                    toast.error(github.error || 'Błąd wysyłania');
+                  }
+                }}
               />
             )}
           </div>

@@ -4,7 +4,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { ChatMessage, AIContext } from '../types';
+import type { ChatMessage, AIContext, Preference } from '../types';
 
 // Leniwa inicjalizacja klienta Anthropic
 let anthropicClient: Anthropic | null = null;
@@ -82,6 +82,16 @@ function formatHistory(history: ChatMessage[], currentMessage: string): Anthropi
 }
 
 /**
+ * Formatuje preferencje do czytelnego formatu dla AI
+ */
+function formatPreferences(preferences: Preference[]): string {
+  if (!preferences || preferences.length === 0) return '';
+
+  const lines = preferences.map(p => `- ${p.key}: ${p.value}`);
+  return `\n\nPreferencje użytkownika (pamiętaj o nich!):\n${lines.join('\n')}`;
+}
+
+/**
  * Buduje kontekst z informacjami o projekcie i preferencjach
  */
 function buildContextInfo(context?: AIContext): string {
@@ -100,10 +110,9 @@ function buildContextInfo(context?: AIContext): string {
     info += `\n\nAktualny kod w edytorze:\n\`\`\`\n${context.editorContent}\n\`\`\``;
   }
 
-  if (context.preferences) {
-    info += `\n\nPreferencje użytkownika:
-- Preferowany tryb: ${context.preferences.preferred_mode}
-- Język: ${context.preferences.language}`;
+  // Dodaj preferencje użytkownika
+  if (context.preferences && context.preferences.length > 0) {
+    info += formatPreferences(context.preferences);
   }
 
   return info;

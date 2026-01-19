@@ -286,17 +286,27 @@ export interface ChatStreamEvent {
 // Kontekst dla AI (historia, preferencje, projekt)
 export interface AIContext {
   history: ChatMessage[];
-  preferences?: UserPreferences;
+  preferences?: Preference[];
   project?: Project;
   editorContent?: string;
 }
 
-// Preferencje użytkownika
+// Preferencje użytkownika (stary format - do usunięcia w przyszłości)
 export interface UserPreferences {
   id: string;
   preferred_mode: ChatMode;
   theme: 'dark' | 'light';
   language: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Pojedyncza preferencja użytkownika (nowy format)
+export interface Preference {
+  id: string;
+  category: string;       // np. "ui", "code", "general"
+  key: string;            // np. "preferred_theme", "tech_stack"
+  value: string;          // np. "dark", "React, TypeScript, Tailwind"
   created_at?: string;
   updated_at?: string;
 }
@@ -328,7 +338,7 @@ export interface ChatPanelProps {
 
 export interface ChatMessageProps {
   message: ChatMessage;
-  onInsertCode?: (code: string, filename?: string) => void;
+  onInsertCode?: (code: string, filename?: string, language?: string) => void;
 }
 
 export interface ChatInputProps {
@@ -398,7 +408,7 @@ export interface UseCodeEditorReturn {
   createFile: (name: string, language: string) => void;
   closeFile: (id: string) => void;
   hasUnsavedChanges: boolean;
-  insertCode: (code: string, filename?: string) => void;
+  insertCode: (code: string, filename?: string, language?: string) => void;
 }
 
 export interface UseGitHubReturn {
