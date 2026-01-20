@@ -141,6 +141,11 @@ function buildContextInfo(context?: AIContext): string {
     info += formatTechStack(context.project.tech_stack);
   }
 
+  // Dodaj pełny kontekst projektu (struktura + pliki) jeśli załadowany
+  if (context.projectContext) {
+    info += `\n\n=== ZAŁADOWANY KONTEKST PROJEKTU ===\n${context.projectContext}\n=== KONIEC KONTEKSTU ===`;
+  }
+
   if (context.editorContent) {
     info += `\n\nAktualny kod w edytorze:\n\`\`\`\n${context.editorContent}\n\`\`\``;
   }

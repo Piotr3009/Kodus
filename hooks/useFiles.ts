@@ -26,6 +26,10 @@ interface UseFilesState {
   selectedFile: FileContent | null;
   isLoading: boolean;
   error: string | null;
+  // Nowe pola dla kontekstu projektu
+  contextLoaded: boolean;
+  projectContext: string | null;
+  addedFiles: { path: string; content: string }[];
 }
 
 export function useFiles() {
@@ -36,6 +40,10 @@ export function useFiles() {
     selectedFile: null,
     isLoading: false,
     error: null,
+    // Nowe pola dla kontekstu projektu
+    contextLoaded: false,
+    projectContext: null,
+    addedFiles: [],
   });
 
   /**
@@ -157,6 +165,120 @@ export function useFiles() {
     setState(prev => ({ ...prev, selectedFile: null }));
   }, []);
 
+  /**
+   * Ładuje pełny kontekst projektu dla AI
+   */
+  const loadProjectContext = useCallback(async (): Promise<string | null> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await fetch('/api/files/context');
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Błąd pobierania kontekstu projektu');
+      }
+
+      const data = await response.json();
+
+      setState(prev => ({
+        ...prev,
+        projectContext: data.context,
+        contextLoaded: true,
+        isLoading: false,
+      }));
+
+      return data.context as string;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nieznany błąd';
+      setState(prev => ({ ...prev, isLoading: false, error: message }));
+      return null;
+    }
+  }, []);
+
+  /**
+   * Dodaje pojedynczy plik do kontekstu AI
+   */
+  const addFileToContext = useCallback(async (path: string): Promise<string | null> => {
+    // Sprawdź czy plik już jest dodany
+    if (state.addedFiles.some(f => f.path === path)) {
+      return null;
+    }
+
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await fetch('/api/files/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Błąd pobierania pliku');
+      }
+
+      const data = await response.json();
+
+      setState(prev => ({
+        ...prev,
+        addedFiles: [...prev.addedFiles, { path: data.path, content: data.content }],
+        isLoading: false,
+      }));
+
+      return data.content as string;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nieznany błąd';
+      setState(prev => ({ ...prev, isLoading: false, error: message }));
+      return null;
+    }
+  }, [state.addedFiles]);
+
+  /**
+   * Usuwa plik z kontekstu AI
+   */
+  const removeFileFromContext = useCallback((path: string) => {
+    setState(prev => ({
+      ...prev,
+      addedFiles: prev.addedFiles.filter(f => f.path !== path),
+    }));
+  }, []);
+
+  /**
+   * Czyści cały kontekst projektu
+   */
+  const clearContext = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      contextLoaded: false,
+      projectContext: null,
+      addedFiles: [],
+    }));
+  }, []);
+
+  /**
+   * Pobiera pełny kontekst do wysłania do AI
+   */
+  const getFullContext = useCallback((): string => {
+    const parts: string[] = [];
+
+    if (state.projectContext) {
+      parts.push(state.projectContext);
+    }
+
+    if (state.addedFiles.length > 0) {
+      parts.push('');
+      parts.push('DODATKOWE PLIKI:');
+      for (const file of state.addedFiles) {
+        parts.push('');
+        parts.push(file.content);
+      }
+    }
+
+    return parts.join('\n');
+  }, [state.projectContext, state.addedFiles]);
+
   return {
     // State
     files: state.files,
@@ -165,6 +287,10 @@ export function useFiles() {
     selectedFile: state.selectedFile,
     isLoading: state.isLoading,
     error: state.error,
+    // Nowe pola kontekstu
+    contextLoaded: state.contextLoaded,
+    projectContext: state.projectContext,
+    addedFiles: state.addedFiles,
 
     // Actions
     listFiles,
@@ -173,5 +299,11 @@ export function useFiles() {
     goUp,
     clearError,
     clearSelectedFile,
+    // Nowe akcje kontekstu
+    loadProjectContext,
+    addFileToContext,
+    removeFileFromContext,
+    clearContext,
+    getFullContext,
   };
 }

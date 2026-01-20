@@ -17,6 +17,11 @@ import type {
   UseChatReturn,
 } from '@/lib/types';
 
+interface AdditionalFile {
+  path: string;
+  content: string;
+}
+
 interface UseChatOptions {
   projectId?: string;
   onMessageReceived?: (message: ChatMessage) => void;
@@ -33,6 +38,10 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const [currentlyTyping, setCurrentlyTyping] = useState<AISender | null>(null);
   const [typingQueue, setTypingQueue] = useState<AISender[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Nowe stany dla kontekstu projektu
+  const [projectContext, setProjectContext] = useState<string | null>(null);
+  const [additionalFiles, setAdditionalFiles] = useState<AdditionalFile[]>([]);
 
   // Ref do EventSource
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -101,6 +110,24 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       // Utwórz abort controller
       abortControllerRef.current = new AbortController();
 
+      // Przygotuj pełny kontekst projektu
+      let fullProjectContext: string | undefined;
+      if (projectContext || additionalFiles.length > 0) {
+        const contextParts: string[] = [];
+        if (projectContext) {
+          contextParts.push(projectContext);
+        }
+        if (additionalFiles.length > 0) {
+          contextParts.push('');
+          contextParts.push('DODATKOWE PLIKI:');
+          for (const file of additionalFiles) {
+            contextParts.push('');
+            contextParts.push(file.content);
+          }
+        }
+        fullProjectContext = contextParts.join('\n');
+      }
+
       // Wyślij request do API
       const response = await fetch(CHAT_API_ENDPOINTS.CHAT, {
         method: 'POST',
@@ -110,6 +137,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           message: content,
           mode,
           project_id: projectId,
+          projectContext: fullProjectContext,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -225,7 +253,31 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [conversationId, projectId, onMessageReceived, onError, loadConversations]);
+  }, [conversationId, projectId, projectContext, additionalFiles, onMessageReceived, onError, loadConversations]);
+
+  // Metody do zarządzania kontekstem projektu
+  const updateProjectContext = useCallback((context: string | null) => {
+    setProjectContext(context);
+  }, []);
+
+  const addFile = useCallback((path: string, content: string) => {
+    setAdditionalFiles(prev => {
+      // Nie dodawaj duplikatów
+      if (prev.some(f => f.path === path)) {
+        return prev;
+      }
+      return [...prev, { path, content }];
+    });
+  }, []);
+
+  const removeFile = useCallback((path: string) => {
+    setAdditionalFiles(prev => prev.filter(f => f.path !== path));
+  }, []);
+
+  const clearProjectContext = useCallback(() => {
+    setProjectContext(null);
+    setAdditionalFiles([]);
+  }, []);
 
   return {
     messages,
@@ -239,5 +291,12 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     error,
     conversations,
     loadConversations,
+    // Nowe pola dla kontekstu projektu
+    projectContext,
+    additionalFiles,
+    updateProjectContext,
+    addFile,
+    removeFile,
+    clearProjectContext,
   };
 }

@@ -8,8 +8,9 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
+import { ContextLoader } from './ContextLoader';
 import { MessageSquare } from 'lucide-react';
-import type { ChatMessage as ChatMessageType, ChatMode, AISender } from '@/lib/types';
+import type { ChatMessage as ChatMessageType, ChatMode, AISender, AdditionalFile } from '@/lib/types';
 
 interface ChatPanelProps {
   messages: ChatMessageType[];
@@ -20,6 +21,12 @@ interface ChatPanelProps {
   onInsertCode?: (code: string, filename?: string, language?: string) => void;
   onOpenArtifact?: (code: string, filename?: string, language?: string) => void;
   defaultMode?: ChatMode;
+  // Nowe propsy dla kontekstu
+  contextLoaded?: boolean;
+  addedFiles?: AdditionalFile[];
+  onLoadContext?: () => Promise<string | null>;
+  onAddFile?: (path: string) => Promise<string | null>;
+  onRemoveFile?: (path: string) => void;
 }
 
 export function ChatPanel({
@@ -31,6 +38,12 @@ export function ChatPanel({
   onInsertCode,
   onOpenArtifact,
   defaultMode,
+  // Nowe propsy dla kontekstu
+  contextLoaded = false,
+  addedFiles = [],
+  onLoadContext,
+  onAddFile,
+  onRemoveFile,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -55,6 +68,18 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full bg-zinc-950">
+      {/* Context Loader - nad wiadomościami */}
+      {onLoadContext && onAddFile && onRemoveFile && (
+        <ContextLoader
+          contextLoaded={contextLoaded}
+          addedFiles={addedFiles}
+          isLoading={isLoading}
+          onLoadContext={onLoadContext}
+          onAddFile={onAddFile}
+          onRemoveFile={onRemoveFile}
+        />
+      )}
+
       {/* Messages area */}
       <div
         ref={scrollRef}

@@ -24,6 +24,7 @@ import { useChat } from '@/hooks/useChat';
 import { useCodeEditor } from '@/hooks/useCodeEditor';
 import { useGitHub } from '@/hooks/useGitHub';
 import { useArtifacts } from '@/hooks/useArtifacts';
+import { useFiles } from '@/hooks/useFiles';
 
 // Typy i stałe
 import type { ChatMode, Project } from '@/lib/types';
@@ -53,6 +54,33 @@ export default function KodusChatPage() {
 
   // Artifacts hook
   const artifacts = useArtifacts();
+
+  // Files hook (dla kontekstu projektu)
+  const files = useFiles();
+
+  // Callback do ładowania kontekstu projektu
+  const handleLoadContext = useCallback(async (): Promise<string | null> => {
+    const context = await files.loadProjectContext();
+    if (context) {
+      chat.updateProjectContext(context);
+    }
+    return context;
+  }, [files, chat]);
+
+  // Callback do dodawania pliku do kontekstu
+  const handleAddFile = useCallback(async (path: string): Promise<string | null> => {
+    const content = await files.addFileToContext(path);
+    if (content) {
+      chat.addFile(path, content);
+    }
+    return content;
+  }, [files, chat]);
+
+  // Callback do usuwania pliku z kontekstu
+  const handleRemoveFile = useCallback((path: string) => {
+    files.removeFileFromContext(path);
+    chat.removeFile(path);
+  }, [files, chat]);
 
   // Callback do ładowania plików z GitHub do edytora
   const handleGitHubFilesLoaded = useCallback((files: any[]) => {
@@ -266,6 +294,11 @@ export default function KodusChatPage() {
                 typingQueue={chat.typingQueue}
                 onInsertCode={handleInsertCode}
                 onOpenArtifact={handleOpenArtifact}
+                contextLoaded={files.contextLoaded}
+                addedFiles={files.addedFiles}
+                onLoadContext={handleLoadContext}
+                onAddFile={handleAddFile}
+                onRemoveFile={handleRemoveFile}
               />
             </div>
 
@@ -314,6 +347,11 @@ export default function KodusChatPage() {
                 typingQueue={chat.typingQueue}
                 onInsertCode={handleInsertCode}
                 onOpenArtifact={handleOpenArtifact}
+                contextLoaded={files.contextLoaded}
+                addedFiles={files.addedFiles}
+                onLoadContext={handleLoadContext}
+                onAddFile={handleAddFile}
+                onRemoveFile={handleRemoveFile}
               />
             ) : (
               <CodeEditor

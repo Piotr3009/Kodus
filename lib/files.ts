@@ -238,3 +238,50 @@ export async function getProjectTree(): Promise<string> {
   lines.push(...treeLines);
   return lines.join('\n');
 }
+
+/**
+ * Pobiera kontekst projektu dla AI
+ * Zawiera strukturę plików i zawartość kluczowych plików
+ */
+export async function getProjectContext(): Promise<string> {
+  const parts: string[] = [];
+
+  // 1. Pobierz drzewo plików
+  try {
+    const tree = await getProjectTree();
+    parts.push('STRUKTURA PROJEKTU:');
+    parts.push(tree);
+  } catch (error) {
+    parts.push('STRUKTURA PROJEKTU:');
+    parts.push('[Błąd pobierania struktury]');
+  }
+
+  parts.push('');
+  parts.push('KLUCZOWE PLIKI:');
+
+  // 2. Pobierz zawartość kluczowych plików
+  const keyFiles = ['package.json', 'lib/types.ts'];
+
+  for (const filePath of keyFiles) {
+    try {
+      const { content } = await readFileContent(filePath);
+      parts.push('');
+      parts.push(`--- ${filePath} ---`);
+      parts.push(content);
+    } catch (error) {
+      parts.push('');
+      parts.push(`--- ${filePath} ---`);
+      parts.push(`[Nie można odczytać pliku: ${error instanceof Error ? error.message : 'nieznany błąd'}]`);
+    }
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Pobiera zawartość pojedynczego pliku dla kontekstu AI
+ */
+export async function getFileForContext(filePath: string): Promise<string> {
+  const { content } = await readFileContent(filePath);
+  return `--- ${filePath} ---\n${content}`;
+}
