@@ -1,3 +1,7 @@
+// ========================================
+// ZAMIEŃ CAŁY PLIK: lib/ai/gpt.ts
+// ========================================
+
 /**
  * Moduł GPT - code reviewer i generator pomysłów
  * Używa OpenAI SDK do komunikacji z GPT-4
@@ -145,7 +149,7 @@ Daj swój feedback jako code reviewer. Bądź konstruktywny i konkretny:`;
 
   try {
     const response = await getOpenAI().chat.completions.create({
-      model: 'gpt-5.2',
+      model: 'gpt-4o',
       max_tokens: 2048,
       messages: [
         { role: 'system', content: systemPrompt },

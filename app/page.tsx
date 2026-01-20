@@ -5,12 +5,13 @@
 /**
  * Główna strona Kodus - Chat Interface z Multi-AI Team
  * Layout: sidebar (konwersacje) + main (chat + editor)
+ * Z DRAGGABLE DIVIDER między chatem a edytorem
  */
 
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { Bot, Menu, X, ChevronDown } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Bot, Menu, X, ChevronDown, GripHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Komponenty
@@ -41,6 +42,11 @@ export default function KodusChatPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Stan dla draggable divider - procent wysokości chatu (domyślnie 60%)
+  const [chatHeightPercent, setChatHeightPercent] = useState(60);
+  const isDragging = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   // Pobierz projekty
   const { state: projectsState } = useProjects();
 
@@ -62,9 +68,7 @@ export default function KodusChatPage() {
   // Files hook (dla kontekstu projektu)
   const files = useFiles();
 
-  // ==========================================
-  // NOWE: Synchronizuj GitHub repo z hookiem plików
-  // ==========================================
+  // Synchronizuj GitHub repo z hookiem plików
   useEffect(() => {
     if (github.isConnected && github.repoInfo) {
       files.setRepoInfo({
@@ -103,7 +107,6 @@ export default function KodusChatPage() {
 
   // Callback do ładowania plików z GitHub do edytora
   const handleGitHubFilesLoaded = useCallback((loadedFiles: any[]) => {
-    // Dodaj pliki do edytora
     for (const file of loadedFiles) {
       editor.insertCode(file.content, file.name, file.language);
     }
@@ -119,7 +122,6 @@ export default function KodusChatPage() {
     (code: string, filename?: string, language?: string) => {
       editor.insertCode(code, filename, language);
       toast.success(`Kod wstawiony${filename ? ` do ${filename}` : ' do edytora'}`);
-      // Na mobile - przełącz do widoku edytora
       setMobileView('editor');
     },
     [editor]
@@ -135,15 +137,54 @@ export default function KodusChatPage() {
     [artifacts]
   );
 
+  // ==========================================
+  // DRAGGABLE DIVIDER - obsługa przeciągania
+  // ==========================================
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging.current || !containerRef.current) return;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const containerHeight = containerRect.height;
+    const mouseY = e.clientY - containerRect.top;
+    
+    // Oblicz procent (min 20%, max 80%)
+    let percent = (mouseY / containerHeight) * 100;
+    percent = Math.max(20, Math.min(80, percent));
+    
+    setChatHeightPercent(percent);
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    isDragging.current = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  // Dodaj globalne event listenery dla drag
+  useEffect(() => {
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
+
   // Obsługa skrótów klawiaturowych
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+B = toggle sidebar
       if (e.ctrlKey && e.key === 'b') {
         e.preventDefault();
         setSidebarOpen((prev) => !prev);
       }
-      // Ctrl+N = nowa rozmowa
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault();
         chat.startNewConversation();
@@ -245,7 +286,6 @@ export default function KodusChatPage() {
                 </span>
                 <ChevronDown size={14} className="text-zinc-500" />
               </button>
-              {/* TODO: Dropdown z projektami */}
             </div>
           </div>
 
@@ -301,10 +341,13 @@ export default function KodusChatPage() {
 
         {/* Main area - flex layout (desktop) / tabs (mobile) */}
         <div className="flex-1 overflow-hidden flex flex-col">
-          {/* Desktop: flex layout with chat (60%) and editor (40%) */}
-          <div className="hidden lg:flex lg:flex-col h-full">
-            {/* Chat Panel - 60% */}
-            <div className="flex-[6] min-h-0 overflow-hidden">
+          {/* Desktop: flex layout with DRAGGABLE DIVIDER */}
+          <div ref={containerRef} className="hidden lg:flex lg:flex-col h-full">
+            {/* Chat Panel - dynamiczna wysokość */}
+            <div 
+              className="min-h-0 overflow-hidden"
+              style={{ height: `${chatHeightPercent}%` }}
+            >
               <ChatPanel
                 messages={chat.messages}
                 onSend={chat.sendMessage}
@@ -322,11 +365,22 @@ export default function KodusChatPage() {
               />
             </div>
 
-            {/* Divider */}
-            <div className="h-1 bg-zinc-800 flex-shrink-0" />
+            {/* DRAGGABLE DIVIDER */}
+            <div
+              onMouseDown={handleMouseDown}
+              className="h-2 bg-zinc-800 hover:bg-purple-600 cursor-row-resize flex-shrink-0 flex items-center justify-center group transition-colors"
+            >
+              <GripHorizontal 
+                size={16} 
+                className="text-zinc-600 group-hover:text-white transition-colors" 
+              />
+            </div>
 
-            {/* Code Editor - 40% */}
-            <div className="flex-[4] min-h-0 overflow-hidden">
+            {/* Code Editor - reszta wysokości */}
+            <div 
+              className="min-h-0 overflow-hidden"
+              style={{ height: `${100 - chatHeightPercent}%` }}
+            >
               <CodeEditor
                 files={editor.files}
                 activeFileId={editor.activeFile?.id || null}
