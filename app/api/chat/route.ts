@@ -29,15 +29,17 @@ import type { ChatRequest, ChatMessage, ChatMode, MessageSender, AIContext, Pref
 // ============================================
 
 const PREFERENCE_PATTERNS = {
-  // Zapisz preferencję - UPROSZCZONE REGEX
+  // Zapisz preferencję - wszystkie warianty polskich znaków
   save: /zapami[eę]taj\s+(.+)/i,
   saveAlt: /zapamietaj\s+(.+)/i,
+  saveAlt2: /zapamiętaj\s+(.+)/i,
   saveEn: /remember\s+(?:that)?\s*(.+)/i,
   // Usuń preferencję
   delete: /zapomnij\s+(?:o)?\s*(.+)/i,
   deleteEn: /forget\s+(?:about)?\s*(.+)/i,
-  // Pokaż preferencje
-  list: /(?:jakie|poka[zż]|wy[sś]wietl|pokaz|wyswietl)\s*(?:masz)?\s*(?:moje)?\s*preferencje/i,
+  // Pokaż preferencje - więcej wariantów
+  list: /(?:jakie|poka[zż]|wy[sś]wietl|pokaz|wyswietl|pokazpreferencje)\s*(?:masz)?\s*(?:moje)?\s*(?:preferencje)?/i,
+  listAlt: /(?:poka[zż]|pokaz)\s*preferencje/i,
   listEn: /(?:show|list|what are)\s*(?:my)?\s*preferences/i,
 };
 
@@ -52,19 +54,20 @@ function detectPreferenceCommand(message: string): {
   console.log('========== PREFERENCE DEBUG ==========');
   console.log('Raw message:', message);
   console.log('Message length:', message.length);
-  console.log('Message bytes:', Buffer.from(message).toString('hex'));
   
   // Test każdego wzorca
   console.log('Testing SAVE pattern:', PREFERENCE_PATTERNS.save.test(message));
   console.log('Testing SAVE ALT pattern:', PREFERENCE_PATTERNS.saveAlt.test(message));
+  console.log('Testing SAVE ALT2 pattern:', PREFERENCE_PATTERNS.saveAlt2.test(message));
   console.log('Testing SAVE EN pattern:', PREFERENCE_PATTERNS.saveEn.test(message));
   console.log('Testing LIST pattern:', PREFERENCE_PATTERNS.list.test(message));
+  console.log('Testing LIST ALT pattern:', PREFERENCE_PATTERNS.listAlt.test(message));
   console.log('Testing DELETE pattern:', PREFERENCE_PATTERNS.delete.test(message));
   console.log('======================================');
   // ========== END DEBUG ==========
 
   // Sprawdź listowanie
-  if (PREFERENCE_PATTERNS.list.test(message) || PREFERENCE_PATTERNS.listEn.test(message)) {
+  if (PREFERENCE_PATTERNS.list.test(message) || PREFERENCE_PATTERNS.listAlt.test(message) || PREFERENCE_PATTERNS.listEn.test(message)) {
     console.log('>>> DETECTED: LIST command');
     return { type: 'list' };
   }
@@ -79,6 +82,12 @@ function detectPreferenceCommand(message: string): {
   match = PREFERENCE_PATTERNS.saveAlt.exec(message);
   if (match) {
     console.log('>>> DETECTED: SAVE command (alt)', match[1]);
+    return { type: 'save', content: match[1].trim() };
+  }
+  
+  match = PREFERENCE_PATTERNS.saveAlt2.exec(message);
+  if (match) {
+    console.log('>>> DETECTED: SAVE command (alt2)', match[1]);
     return { type: 'save', content: match[1].trim() };
   }
   
