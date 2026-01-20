@@ -150,7 +150,8 @@ ${gptResponse}
 Daj swój feedback z perspektywy UI/UX. Bądź konkretny i praktyczny:`;
 
   try {
-    const model = getGenAI().getGenerativeModel({ model: 'gemini-1.5-pro' });
+   
+    const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const result = await model.generateContent(prompt);
     const response = result.response;
