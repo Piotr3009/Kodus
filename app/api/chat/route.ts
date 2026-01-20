@@ -1,13 +1,11 @@
+// ========================================
+// ZAMIEŃ CAŁY PLIK: app/api/chat/route.ts
+// DODANE LOGI DIAGNOSTYCZNE
+// ========================================
+
 /**
  * API Route: /api/chat
  * Dyrygent - orkiestruje wywołania AI w odpowiedniej kolejności
- *
- * Flow:
- * - Solo:  Claude only
- * - Duo:   Claude → GPT → Claude (summary)
- * - Team:  Claude → GPT → Gemini → Claude (final)
- *
- * Używa Server-Sent Events (SSE) do streamowania odpowiedzi
  */
 
 import { NextRequest } from 'next/server';
@@ -31,14 +29,15 @@ import type { ChatRequest, ChatMessage, ChatMode, MessageSender, AIContext, Pref
 // ============================================
 
 const PREFERENCE_PATTERNS = {
-  // Zapisz preferencję
-  save: /zapamiętaj\s+(?:że|ze)?\s*(.+)/i,
+  // Zapisz preferencję - UPROSZCZONE REGEX
+  save: /zapami[eę]taj\s+(.+)/i,
+  saveAlt: /zapamietaj\s+(.+)/i,
   saveEn: /remember\s+(?:that)?\s*(.+)/i,
   // Usuń preferencję
   delete: /zapomnij\s+(?:o)?\s*(.+)/i,
   deleteEn: /forget\s+(?:about)?\s*(.+)/i,
   // Pokaż preferencje
-  list: /(?:jakie|pokaż|wyświetl|pokaz|wyswietl)\s*(?:masz)?\s*(?:moje)?\s*preferencje/i,
+  list: /(?:jakie|poka[zż]|wy[sś]wietl|pokaz|wyswietl)\s*(?:masz)?\s*(?:moje)?\s*preferencje/i,
   listEn: /(?:show|list|what are)\s*(?:my)?\s*preferences/i,
 };
 
@@ -49,63 +48,95 @@ function detectPreferenceCommand(message: string): {
   type: 'save' | 'delete' | 'list' | null;
   content?: string;
 } {
+  // ========== DEBUG LOGS ==========
+  console.log('========== PREFERENCE DEBUG ==========');
+  console.log('Raw message:', message);
+  console.log('Message length:', message.length);
+  console.log('Message bytes:', Buffer.from(message).toString('hex'));
+  
+  // Test każdego wzorca
+  console.log('Testing SAVE pattern:', PREFERENCE_PATTERNS.save.test(message));
+  console.log('Testing SAVE ALT pattern:', PREFERENCE_PATTERNS.saveAlt.test(message));
+  console.log('Testing SAVE EN pattern:', PREFERENCE_PATTERNS.saveEn.test(message));
+  console.log('Testing LIST pattern:', PREFERENCE_PATTERNS.list.test(message));
+  console.log('Testing DELETE pattern:', PREFERENCE_PATTERNS.delete.test(message));
+  console.log('======================================');
+  // ========== END DEBUG ==========
+
   // Sprawdź listowanie
   if (PREFERENCE_PATTERNS.list.test(message) || PREFERENCE_PATTERNS.listEn.test(message)) {
+    console.log('>>> DETECTED: LIST command');
     return { type: 'list' };
   }
 
-  // Sprawdź zapisywanie
+  // Sprawdź zapisywanie - wszystkie warianty
   let match = PREFERENCE_PATTERNS.save.exec(message);
   if (match) {
+    console.log('>>> DETECTED: SAVE command (main)', match[1]);
     return { type: 'save', content: match[1].trim() };
   }
+  
+  match = PREFERENCE_PATTERNS.saveAlt.exec(message);
+  if (match) {
+    console.log('>>> DETECTED: SAVE command (alt)', match[1]);
+    return { type: 'save', content: match[1].trim() };
+  }
+  
   match = PREFERENCE_PATTERNS.saveEn.exec(message);
   if (match) {
+    console.log('>>> DETECTED: SAVE command (en)', match[1]);
     return { type: 'save', content: match[1].trim() };
   }
 
   // Sprawdź usuwanie
   match = PREFERENCE_PATTERNS.delete.exec(message);
   if (match) {
+    console.log('>>> DETECTED: DELETE command', match[1]);
     return { type: 'delete', content: match[1].trim() };
   }
   match = PREFERENCE_PATTERNS.deleteEn.exec(message);
   if (match) {
+    console.log('>>> DETECTED: DELETE command (en)', match[1]);
     return { type: 'delete', content: match[1].trim() };
   }
 
+  console.log('>>> NO PREFERENCE COMMAND DETECTED');
   return { type: null };
 }
 
 /**
  * Parsuje preferencję z tekstu użytkownika
- * Np. "preferuję dark mode" -> { key: "preferowany_motyw", value: "dark mode" }
  */
 function parsePreference(content: string): { category: string; key: string; value: string } {
+  console.log('Parsing preference content:', content);
+  
   // Wzorce dla różnych typów preferencji
   const patterns = [
+    { regex: /nazywam\s+si[eę]\s+(.+)/i, category: 'personal', keyPrefix: 'imię' },
+    { regex: /mam\s+na\s+imi[eę]\s+(.+)/i, category: 'personal', keyPrefix: 'imię' },
+    { regex: /jestem\s+(.+)/i, category: 'personal', keyPrefix: 'kim_jestem' },
     { regex: /prefer[uę]\s+(.+)/i, category: 'general', keyPrefix: 'preferuje' },
     { regex: /lubi[ęe]\s+(.+)/i, category: 'general', keyPrefix: 'lubi' },
-    { regex: /używam\s+(.+)/i, category: 'tech', keyPrefix: 'używa' },
-    { regex: /pracuję?\s+(?:w|z|nad)?\s*(.+)/i, category: 'work', keyPrefix: 'pracuje_z' },
-    { regex: /mój\s+(?:ulubiony|preferowany)?\s*(.+)\s+to\s+(.+)/i, category: 'general', keyPrefix: 'ulubiony' },
+    { regex: /u[zż]ywam\s+(.+)/i, category: 'tech', keyPrefix: 'używa' },
+    { regex: /pracuj[eę]?\s+(?:w|z|nad)?\s*(.+)/i, category: 'work', keyPrefix: 'pracuje_z' },
+    { regex: /m[oó]j\s+(?:ulubiony|preferowany)?\s*(.+)\s+to\s+(.+)/i, category: 'general', keyPrefix: 'ulubiony' },
     { regex: /odpowiadaj\s+(?:mi)?\s+(?:po)?\s*(.+)/i, category: 'communication', keyPrefix: 'język_odpowiedzi' },
     { regex: /my\s+(?:preferred|favorite)?\s*(.+)\s+is\s+(.+)/i, category: 'general', keyPrefix: 'favorite' },
     { regex: /i\s+(?:prefer|like|use)\s+(.+)/i, category: 'general', keyPrefix: 'prefers' },
+    { regex: /my\s+name\s+is\s+(.+)/i, category: 'personal', keyPrefix: 'name' },
   ];
 
   for (const pattern of patterns) {
     const match = content.match(pattern.regex);
     if (match) {
+      console.log('Matched pattern:', pattern.keyPrefix, match);
       if (match.length >= 3) {
-        // Format: "mój X to Y"
         return {
           category: pattern.category,
           key: `${match[1].trim().toLowerCase().replace(/\s+/g, '_')}`,
           value: match[2].trim(),
         };
       } else {
-        // Format: "preferuję X"
         return {
           category: pattern.category,
           key: pattern.keyPrefix,
@@ -115,20 +146,21 @@ function parsePreference(content: string): { category: string; key: string; valu
     }
   }
 
-  // Domyślne parsowanie - użyj pierwszych słów jako klucz
+  // Domyślne parsowanie
   const words = content.split(/\s+/);
   const key = words.slice(0, Math.min(3, words.length)).join('_').toLowerCase();
   const value = content;
 
+  console.log('Default parsing - key:', key, 'value:', value);
   return { category: 'general', key, value };
 }
 
 /**
- * Formatuje listę preferencji do czytelnego formatu
+ * Formatuje listę preferencji
  */
 function formatPreferencesList(preferences: Preference[]): string {
   if (preferences.length === 0) {
-    return '📋 Nie mam jeszcze zapisanych żadnych preferencji.\n\nMożesz mi powiedzieć np.:\n- "Zapamiętaj że preferuję dark mode"\n- "Zapamiętaj że używam React i TypeScript"\n- "Zapamiętaj że odpowiadaj mi po polsku"';
+    return '📋 Nie mam jeszcze zapisanych żadnych preferencji.\n\nMożesz mi powiedzieć np.:\n- "Zapamiętaj że nazywam się Piotr"\n- "Zapamiętaj że preferuję dark mode"\n- "Zapamiętaj że używam React i TypeScript"';
   }
 
   const grouped: Record<string, Preference[]> = {};
@@ -148,6 +180,7 @@ function formatPreferencesList(preferences: Preference[]): string {
       work: '💼 Praca',
       communication: '💬 Komunikacja',
       ui: '🎨 Interfejs',
+      personal: '👤 Osobiste',
     }[category] || `📁 ${category}`;
 
     result += `${categoryName}:\n`;
@@ -209,13 +242,12 @@ async function orchestrateAI(
   context: AIContext
 ) {
   try {
-    // Sprawdź czy to trigger do generowania
     const action = isGenerateAction(message) ? 'generate' : 'discuss';
     const enhancedMessage = action === 'generate'
       ? `${message}\n\n[TRYB GENEROWANIA - napisz pełny, działający kod]`
       : message;
 
-    // 1. CLAUDE - zawsze pierwszy
+    // 1. CLAUDE
     sendEvent({ type: 'typing', sender: 'claude' });
 
     let claudeResponse: string;
@@ -230,21 +262,19 @@ async function orchestrateAI(
     sendEvent({ type: 'message', sender: 'claude', content: claudeResponse });
     await saveChatMessage(conversationId, 'claude', claudeResponse);
 
-    // Solo mode - koniec
     if (mode === 'solo') {
       sendEvent({ type: 'done' });
       close();
       return;
     }
 
-    // 2. GPT - review
+    // 2. GPT
     sendEvent({ type: 'typing', sender: 'gpt' });
 
     let gptResponse: string;
     try {
       gptResponse = await callGPT(message, claudeResponse, context.history, context);
     } catch (error) {
-      // GPT błąd - kontynuuj bez niego
       console.error('GPT error:', error);
       gptResponse = 'Nie mogłem przeanalizować kodu w tym momencie.';
     }
@@ -252,7 +282,6 @@ async function orchestrateAI(
     sendEvent({ type: 'message', sender: 'gpt', content: gptResponse });
     await saveChatMessage(conversationId, 'gpt', gptResponse);
 
-    // Duo mode - Claude podsumowuje
     if (mode === 'duo') {
       sendEvent({ type: 'typing', sender: 'claude' });
 
@@ -271,14 +300,13 @@ async function orchestrateAI(
       return;
     }
 
-    // 3. GEMINI - UI/UX (mode === 'team')
+    // 3. GEMINI
     sendEvent({ type: 'typing', sender: 'gemini' });
 
     let geminiResponse: string;
     try {
       geminiResponse = await callGemini(message, claudeResponse, gptResponse, context.history, context);
     } catch (error) {
-      // Gemini błąd - kontynuuj bez niego
       console.error('Gemini error:', error);
       geminiResponse = 'Nie mogłem przeanalizować UI/UX w tym momencie.';
     }
@@ -286,7 +314,7 @@ async function orchestrateAI(
     sendEvent({ type: 'message', sender: 'gemini', content: geminiResponse });
     await saveChatMessage(conversationId, 'gemini', geminiResponse);
 
-    // 4. CLAUDE - podsumowanie finalne
+    // 4. CLAUDE final
     sendEvent({ type: 'typing', sender: 'claude' });
 
     let claudeFinal: string;
@@ -317,6 +345,11 @@ export async function POST(request: NextRequest) {
     const body: ChatRequest = await request.json();
     const { conversation_id, message, mode, project_id, projectContext, context: requestContext } = body;
 
+    console.log('========== CHAT API REQUEST ==========');
+    console.log('Message received:', message);
+    console.log('Mode:', mode);
+    console.log('=======================================');
+
     // Walidacja
     if (!message || !mode) {
       return new Response(
@@ -327,11 +360,11 @@ export async function POST(request: NextRequest) {
 
     // Pobierz preferencje użytkownika
     const preferences = await getPreferences();
+    console.log('Current preferences count:', preferences.length);
 
     // Utwórz lub użyj istniejącej konwersacji
     let conversationId = conversation_id;
     if (!conversationId) {
-      // Utwórz nową konwersację z tytułem z pierwszych słów wiadomości
       const title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
       const conversation = await createConversation(title, mode, project_id);
       conversationId = conversation.id;
@@ -340,8 +373,10 @@ export async function POST(request: NextRequest) {
     // Zapisz wiadomość użytkownika
     await saveChatMessage(conversationId, 'user', message);
 
-    // Sprawdź czy to komenda preferencji
+    // ========== SPRAWDŹ PREFERENCJE ==========
     const preferenceCommand = detectPreferenceCommand(message);
+    console.log('Preference command result:', preferenceCommand);
+    // =========================================
 
     // Utwórz SSE stream
     const { stream, sendEvent, close } = createSSEStream();
@@ -351,19 +386,19 @@ export async function POST(request: NextRequest) {
 
     // Obsłuż komendy preferencji
     if (preferenceCommand.type) {
+      console.log('>>> HANDLING PREFERENCE COMMAND:', preferenceCommand.type);
       try {
         let responseMessage = '';
 
         switch (preferenceCommand.type) {
           case 'list': {
-            // Pokaż listę preferencji
             responseMessage = formatPreferencesList(preferences);
             break;
           }
           case 'save': {
-            // Zapisz nową preferencję
             if (preferenceCommand.content) {
               const parsed = parsePreference(preferenceCommand.content);
+              console.log('>>> SAVING PREFERENCE:', parsed);
               await savePreference(parsed.category, parsed.key, parsed.value);
               responseMessage = `✅ Zapamiętałem!\n\n**${parsed.key}**: ${parsed.value}\n\nBędę o tym pamiętać w przyszłych rozmowach.`;
             } else {
@@ -372,10 +407,8 @@ export async function POST(request: NextRequest) {
             break;
           }
           case 'delete': {
-            // Usuń preferencję
             if (preferenceCommand.content) {
               const keyToDelete = preferenceCommand.content.toLowerCase().replace(/\s+/g, '_');
-              // Szukaj preferencji po kluczu lub wartości
               const prefToDelete = preferences.find(
                 p => p.key.includes(keyToDelete) || p.value.toLowerCase().includes(preferenceCommand.content!.toLowerCase())
               );
@@ -392,7 +425,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Wyślij odpowiedź systemową
+        // Wyślij odpowiedź
         sendEvent({ type: 'message', sender: 'claude', content: responseMessage });
         await saveChatMessage(conversationId, 'claude', responseMessage);
         sendEvent({ type: 'done' });
@@ -428,13 +461,13 @@ export async function POST(request: NextRequest) {
 
     const context: AIContext = {
       history,
-      preferences,  // Dodaj preferencje do kontekstu AI
+      preferences,
       project: project || undefined,
       editorContent: requestContext?.editorContent,
-      projectContext: projectContext || undefined,  // Kontekst projektu (struktura + pliki)
+      projectContext: projectContext || undefined,
     };
 
-    // Uruchom orkiestrację w tle (nie blokuje response)
+    // Uruchom orkiestrację
     orchestrateAI(sendEvent, close, conversationId, message, mode, context);
 
     return new Response(stream, {
