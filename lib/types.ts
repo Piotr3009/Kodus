@@ -32,6 +32,7 @@ export interface Project {
   description: string | null;
   repo_url: string | null;
   status: ProjectStatus;
+  tech_stack?: string[];  // Stack technologiczny projektu
   created_at?: string;
   updated_at?: string;
 }
@@ -417,4 +418,31 @@ export interface UseGitHubReturn {
   push: (files: EditorFile[], message: string) => Promise<void>;
   pull: () => Promise<void>;
   status: 'disconnected' | 'synced' | 'ahead' | 'behind';
+}
+
+// ==========================================
+// TYPY DLA PANELU ARTEFAKTÓW
+// ==========================================
+
+// Artefakt - pojedynczy plik kodu w panelu
+export interface Artifact {
+  id: string;
+  filename: string;
+  language: string;
+  content: string;
+  createdAt: string;
+}
+
+// Hook return dla useArtifacts
+export interface UseArtifactsReturn {
+  artifacts: Artifact[];
+  activeArtifact: Artifact | null;
+  isOpen: boolean;
+  addArtifact: (filename: string, language: string, content: string) => void;
+  removeArtifact: (id: string) => void;
+  setActiveArtifact: (id: string) => void;
+  openPanel: () => void;
+  closePanel: () => void;
+  togglePanel: () => void;
+  clearArtifacts: () => void;
 }

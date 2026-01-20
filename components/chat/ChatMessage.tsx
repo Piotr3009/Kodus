@@ -9,7 +9,7 @@
 import { memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy, Check, FileCode } from 'lucide-react';
+import { Copy, Check, FileCode, PanelRight } from 'lucide-react';
 import { useState } from 'react';
 import { AI_PERSONALITIES, USER_COLOR, USER_BG_COLOR } from '@/lib/constants';
 import type { ChatMessage as ChatMessageType, MessageSender, AISender } from '@/lib/types';
@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 interface ChatMessageProps {
   message: ChatMessageType;
   onInsertCode?: (code: string, filename?: string, language?: string) => void;
+  onOpenArtifact?: (code: string, filename?: string, language?: string) => void;
 }
 
 // Formatowanie timestamp
@@ -68,11 +69,13 @@ function CodeBlock({
   language,
   filename: providedFilename,
   onInsert,
+  onOpenArtifact,
 }: {
   code: string;
   language?: string;
   filename?: string;
   onInsert?: (code: string, filename?: string, language?: string) => void;
+  onOpenArtifact?: (code: string, filename?: string, language?: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -93,6 +96,12 @@ function CodeBlock({
     }
   };
 
+  const handleOpenArtifact = () => {
+    if (onOpenArtifact) {
+      onOpenArtifact(displayCode, filename, language);
+    }
+  };
+
   return (
     <div className="relative group my-3 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-700">
       {/* Header */}
@@ -106,6 +115,16 @@ function CodeBlock({
           )}
         </div>
         <div className="flex gap-1">
+          {onOpenArtifact && (
+            <button
+              onClick={handleOpenArtifact}
+              className="flex items-center gap-1 px-2 py-1 rounded hover:bg-zinc-700 text-purple-400 hover:text-purple-300 transition-colors text-xs"
+              title="Otwórz w panelu artefaktów"
+            >
+              <PanelRight size={14} />
+              <span className="hidden sm:inline">Panel</span>
+            </button>
+          )}
           {onInsert && (
             <button
               onClick={handleInsert}
@@ -134,7 +153,7 @@ function CodeBlock({
 }
 
 // Główny komponent wiadomości
-function ChatMessageComponent({ message, onInsertCode }: ChatMessageProps) {
+function ChatMessageComponent({ message, onInsertCode, onOpenArtifact }: ChatMessageProps) {
   const { sender, content, created_at } = message;
 
   // Pobierz styl dla nadawcy
@@ -212,6 +231,7 @@ function ChatMessageComponent({ message, onInsertCode }: ChatMessageProps) {
                     code={code}
                     language={match?.[1]}
                     onInsert={onInsertCode}
+                    onOpenArtifact={onOpenArtifact}
                   />
                 );
               },

@@ -18,6 +18,7 @@ interface ChatPanelProps {
   currentlyTyping: AISender | null;
   typingQueue?: AISender[];
   onInsertCode?: (code: string, filename?: string, language?: string) => void;
+  onOpenArtifact?: (code: string, filename?: string, language?: string) => void;
   defaultMode?: ChatMode;
 }
 
@@ -28,6 +29,7 @@ export function ChatPanel({
   currentlyTyping,
   typingQueue,
   onInsertCode,
+  onOpenArtifact,
   defaultMode,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -92,6 +94,7 @@ export function ChatPanel({
                 key={message.id}
                 message={message}
                 onInsertCode={onInsertCode}
+                onOpenArtifact={onOpenArtifact}
               />
             ))}
             <div ref={messagesEndRef} />
