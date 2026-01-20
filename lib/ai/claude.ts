@@ -4,7 +4,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { ChatMessage, AIContext, Preference } from '../types';
+import type { ChatMessage, AIContext, Preference, AIResponseWithMetadata } from '../types';
 
 // Leniwa inicjalizacja klienta Anthropic
 let anthropicClient: Anthropic | null = null;
@@ -160,12 +160,13 @@ function buildContextInfo(context?: AIContext): string {
 
 /**
  * Wywołuje Claude jako głównego architekta (pierwsza odpowiedź)
+ * Zwraca odpowiedź z metadanymi o tokenach
  */
 export async function callClaude(
   message: string,
   history: ChatMessage[],
   context?: AIContext
-): Promise<string> {
+): Promise<AIResponseWithMetadata> {
   const contextInfo = buildContextInfo(context);
   const systemPrompt = CLAUDE_SYSTEM_PROMPT + contextInfo;
 
@@ -179,7 +180,25 @@ export async function callClaude(
 
     // Wyciągnij tekst z odpowiedzi
     const textBlock = response.content.find(block => block.type === 'text');
-    return textBlock ? textBlock.text : 'Przepraszam, nie mogłem wygenerować odpowiedzi.';
+    const content = textBlock ? textBlock.text : 'Przepraszam, nie mogłem wygenerować odpowiedzi.';
+
+    // Pobierz informacje o tokenach
+    const inputTokens = response.usage?.input_tokens || 0;
+    const outputTokens = response.usage?.output_tokens || 0;
+    const tokensUsed = inputTokens + outputTokens;
+
+    console.log(`[CLAUDE] Tokeny: input=${inputTokens}, output=${outputTokens}, total=${tokensUsed}`);
+
+    return {
+      content,
+      metadata: {
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        detectedPatterns: [],
+        autoSaved: [],
+      },
+    };
   } catch (error) {
     console.error('Błąd Claude:', error);
     throw new Error(`Błąd komunikacji z Claude: ${error instanceof Error ? error.message : 'nieznany błąd'}`);
@@ -187,14 +206,27 @@ export async function callClaude(
 }
 
 /**
+ * Wywołuje Claude (stara wersja dla kompatybilności - zwraca string)
+ */
+export async function callClaudeSimple(
+  message: string,
+  history: ChatMessage[],
+  context?: AIContext
+): Promise<string> {
+  const result = await callClaude(message, history, context);
+  return result.content;
+}
+
+/**
  * Wywołuje Claude do podsumowania po feedback od GPT (tryb duo)
+ * Zwraca odpowiedź z metadanymi o tokenach
  */
 export async function callClaudeSummary(
   originalMessage: string,
   claudeFirstResponse: string,
   gptFeedback: string,
   context?: AIContext
-): Promise<string> {
+): Promise<AIResponseWithMetadata> {
   const contextInfo = buildContextInfo(context);
   const systemPrompt = CLAUDE_SUMMARY_PROMPT + contextInfo;
 
@@ -217,7 +249,24 @@ Daj finalne rozwiązanie uwzględniając konstruktywny feedback:`;
     });
 
     const textBlock = response.content.find(block => block.type === 'text');
-    return textBlock ? textBlock.text : 'Przepraszam, nie mogłem wygenerować podsumowania.';
+    const content = textBlock ? textBlock.text : 'Przepraszam, nie mogłem wygenerować podsumowania.';
+
+    const inputTokens = response.usage?.input_tokens || 0;
+    const outputTokens = response.usage?.output_tokens || 0;
+    const tokensUsed = inputTokens + outputTokens;
+
+    console.log(`[CLAUDE SUMMARY] Tokeny: input=${inputTokens}, output=${outputTokens}, total=${tokensUsed}`);
+
+    return {
+      content,
+      metadata: {
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        detectedPatterns: [],
+        autoSaved: [],
+      },
+    };
   } catch (error) {
     console.error('Błąd Claude Summary:', error);
     throw new Error(`Błąd komunikacji z Claude: ${error instanceof Error ? error.message : 'nieznany błąd'}`);
@@ -226,6 +275,7 @@ Daj finalne rozwiązanie uwzględniając konstruktywny feedback:`;
 
 /**
  * Wywołuje Claude do finalnego podsumowania po feedback od GPT i Gemini (tryb team)
+ * Zwraca odpowiedź z metadanymi o tokenach
  */
 export async function callClaudeFinal(
   originalMessage: string,
@@ -233,7 +283,7 @@ export async function callClaudeFinal(
   gptFeedback: string,
   geminiFeedback: string,
   context?: AIContext
-): Promise<string> {
+): Promise<AIResponseWithMetadata> {
   const contextInfo = buildContextInfo(context);
   const systemPrompt = CLAUDE_FINAL_PROMPT + contextInfo;
 
@@ -259,7 +309,24 @@ Daj finalne rozwiązanie uwzględniając konstruktywny feedback od obu:`;
     });
 
     const textBlock = response.content.find(block => block.type === 'text');
-    return textBlock ? textBlock.text : 'Przepraszam, nie mogłem wygenerować finalnego podsumowania.';
+    const content = textBlock ? textBlock.text : 'Przepraszam, nie mogłem wygenerować finalnego podsumowania.';
+
+    const inputTokens = response.usage?.input_tokens || 0;
+    const outputTokens = response.usage?.output_tokens || 0;
+    const tokensUsed = inputTokens + outputTokens;
+
+    console.log(`[CLAUDE FINAL] Tokeny: input=${inputTokens}, output=${outputTokens}, total=${tokensUsed}`);
+
+    return {
+      content,
+      metadata: {
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        detectedPatterns: [],
+        autoSaved: [],
+      },
+    };
   } catch (error) {
     console.error('Błąd Claude Final:', error);
     throw new Error(`Błąd komunikacji z Claude: ${error instanceof Error ? error.message : 'nieznany błąd'}`);

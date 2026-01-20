@@ -17,6 +17,32 @@ import type {
   ChatMode,
   MessageSender,
   Preference,
+  // Nowe typy dla auto-save
+  Decision,
+  BugHistory,
+  Prompt,
+  ProjectRule,
+  TechStackItem,
+  StyleGuide,
+  UserFeedback,
+  ReviewFeedback,
+  BacklogItem,
+  Doc,
+  Milestone,
+  MemoryEmbedding,
+  // Inputy
+  SaveLLMResponseInput,
+  SaveDecisionInput,
+  SaveBugInput,
+  SavePromptInput,
+  SaveProjectRuleInput,
+  SaveTechStackInput,
+  SaveStyleGuideInput,
+  SaveUserFeedbackInput,
+  SaveReviewFeedbackInput,
+  SaveBacklogInput,
+  SaveDocInput,
+  SaveMilestoneInput,
 } from './types';
 import { STORAGE_BUCKET, TASK_HISTORY_LIMIT } from './constants';
 
@@ -651,6 +677,854 @@ export async function getPreferenceByKey(key: string): Promise<Preference | null
     return data;
   } catch (error) {
     console.error('Błąd pobierania preferencji:', error);
+    return null;
+  }
+}
+
+// ============================================
+// DECISIONS (Decyzje architektoniczne)
+// ============================================
+
+/**
+ * Zapisuje decyzję architektoniczną
+ */
+export async function saveDecision(input: SaveDecisionInput): Promise<Decision | null> {
+  try {
+    const { data, error } = await supabase
+      .from('decisions')
+      .insert({
+        project_id: input.project_id,
+        title: input.title,
+        description: input.description,
+        reason: input.reason,
+        alternatives: input.alternatives || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania decyzji:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano decyzję:', data.id, '-', data.title);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania decyzji:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera decyzje dla projektu
+ */
+export async function getDecisions(projectId: string): Promise<Decision[]> {
+  try {
+    const { data, error } = await supabase
+      .from('decisions')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Błąd pobierania decyzji:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania decyzji:', error);
+    return [];
+  }
+}
+
+// ============================================
+// BUGS_HISTORY (Historia bugów)
+// ============================================
+
+/**
+ * Zapisuje naprawiony bug do historii
+ */
+export async function saveBugHistory(input: SaveBugInput): Promise<BugHistory | null> {
+  try {
+    const { data, error } = await supabase
+      .from('bugs_history')
+      .insert({
+        project_id: input.project_id,
+        description: input.description,
+        solution: input.solution,
+        file_path: input.file_path || null,
+        line_number: input.line_number || null,
+        severity: input.severity || 'medium',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania bug history:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano bug:', data.id);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania bug history:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera historię bugów dla projektu
+ */
+export async function getBugsHistory(projectId: string): Promise<BugHistory[]> {
+  try {
+    const { data, error } = await supabase
+      .from('bugs_history')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Błąd pobierania bugs history:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania bugs history:', error);
+    return [];
+  }
+}
+
+// ============================================
+// LLM_RESPONSES (Rozszerzone zapisywanie)
+// ============================================
+
+/**
+ * Zapisuje odpowiedź LLM (rozszerzona wersja z tokenami)
+ */
+export async function saveLLMResponse(input: SaveLLMResponseInput): Promise<LLMResponse | null> {
+  try {
+    const { data, error } = await supabase
+      .from('llm_responses')
+      .insert({
+        task_id: input.task_id || null,
+        llm_source: input.llm_source,
+        prompt_used: input.prompt_used,
+        response: input.response,
+        tokens_used: input.tokens_used,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania LLM response:', error);
+      return null;
+    }
+
+    console.log(`[AUTO-SAVE] Zapisano odpowiedź ${input.llm_source}: ${input.tokens_used} tokenów`);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania LLM response:', error);
+    return null;
+  }
+}
+
+// ============================================
+// PROMPTS (Wygenerowane prompty)
+// ============================================
+
+/**
+ * Zapisuje wygenerowany prompt
+ */
+export async function savePrompt(input: SavePromptInput): Promise<Prompt | null> {
+  try {
+    const { data, error } = await supabase
+      .from('prompts')
+      .insert({
+        name: input.name,
+        llm_target: input.llm_target,
+        content: input.content,
+        description: input.description || null,
+        tags: input.tags || [],
+        use_count: 0,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania promptu:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano prompt:', data.id, '-', data.name);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania promptu:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera prompty dla danego celu
+ */
+export async function getPrompts(llmTarget?: string): Promise<Prompt[]> {
+  try {
+    let query = supabase
+      .from('prompts')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (llmTarget) {
+      query = query.eq('llm_target', llmTarget);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Błąd pobierania promptów:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania promptów:', error);
+    return [];
+  }
+}
+
+/**
+ * Inkrementuje licznik użyć promptu
+ */
+export async function incrementPromptUseCount(promptId: string): Promise<void> {
+  try {
+    const { error } = await supabase.rpc('increment_prompt_use_count', { prompt_id: promptId });
+    if (error) {
+      // Fallback jeśli RPC nie istnieje - pobierz i zaktualizuj
+      const { data } = await supabase.from('prompts').select('use_count').eq('id', promptId).single();
+      if (data) {
+        await supabase.from('prompts').update({ use_count: (data.use_count || 0) + 1 }).eq('id', promptId);
+      }
+    }
+  } catch (error) {
+    console.error('Błąd inkrementacji use_count:', error);
+  }
+}
+
+// ============================================
+// PROJECT_RULES (Zasady projektu)
+// ============================================
+
+/**
+ * Zapisuje zasadę projektu
+ */
+export async function saveProjectRule(input: SaveProjectRuleInput): Promise<ProjectRule | null> {
+  try {
+    // Sprawdź czy taka zasada już istnieje
+    const { data: existing } = await supabase
+      .from('project_rules')
+      .select('id')
+      .eq('project_id', input.project_id)
+      .eq('rule', input.rule)
+      .single();
+
+    if (existing) {
+      console.log('[AUTO-SAVE] Zasada już istnieje, pomijam');
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('project_rules')
+      .insert({
+        project_id: input.project_id,
+        rule: input.rule,
+        category: input.category,
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania project rule:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano zasadę projektu:', data.id);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania project rule:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera zasady dla projektu
+ */
+export async function getProjectRules(projectId: string): Promise<ProjectRule[]> {
+  try {
+    const { data, error } = await supabase
+      .from('project_rules')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Błąd pobierania project rules:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania project rules:', error);
+    return [];
+  }
+}
+
+// ============================================
+// TECH_STACK (Technologie w projekcie)
+// ============================================
+
+/**
+ * Zapisuje element tech stacku
+ */
+export async function saveTechStack(input: SaveTechStackInput): Promise<TechStackItem | null> {
+  try {
+    // Sprawdź czy technologia już istnieje w projekcie
+    const { data: existing } = await supabase
+      .from('tech_stack')
+      .select('id')
+      .eq('project_id', input.project_id)
+      .ilike('name', input.name)
+      .single();
+
+    if (existing) {
+      console.log('[AUTO-SAVE] Tech stack item już istnieje, pomijam');
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('tech_stack')
+      .insert({
+        project_id: input.project_id,
+        name: input.name,
+        category: input.category,
+        version: input.version || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania tech stack:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano tech stack:', data.name);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania tech stack:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera tech stack dla projektu
+ */
+export async function getTechStack(projectId: string): Promise<TechStackItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('tech_stack')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('category', { ascending: true });
+
+    if (error) {
+      console.error('Błąd pobierania tech stack:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania tech stack:', error);
+    return [];
+  }
+}
+
+// ============================================
+// STYLE_GUIDE (Zasady stylu kodu)
+// ============================================
+
+/**
+ * Zapisuje zasadę stylu kodu
+ */
+export async function saveStyleGuide(input: SaveStyleGuideInput): Promise<StyleGuide | null> {
+  try {
+    const { data, error } = await supabase
+      .from('style_guide')
+      .insert({
+        project_id: input.project_id,
+        rule: input.rule,
+        example_good: input.example_good || null,
+        example_bad: input.example_bad || null,
+        language: input.language || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania style guide:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano style guide:', data.id);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania style guide:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera style guide dla projektu
+ */
+export async function getStyleGuide(projectId: string): Promise<StyleGuide[]> {
+  try {
+    const { data, error } = await supabase
+      .from('style_guide')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Błąd pobierania style guide:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania style guide:', error);
+    return [];
+  }
+}
+
+// ============================================
+// USER_FEEDBACK (Oceny odpowiedzi AI)
+// ============================================
+
+/**
+ * Zapisuje feedback użytkownika
+ */
+export async function saveUserFeedback(input: SaveUserFeedbackInput): Promise<UserFeedback | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_feedback')
+      .insert({
+        llm_response_id: input.llm_response_id,
+        rating: input.rating,
+        comment: input.comment || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania user feedback:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano user feedback:', data.id, '- rating:', data.rating);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania user feedback:', error);
+    return null;
+  }
+}
+
+// ============================================
+// REVIEW_FEEDBACK (Feedback z code review)
+// ============================================
+
+/**
+ * Zapisuje feedback z code review
+ */
+export async function saveReviewFeedback(input: SaveReviewFeedbackInput): Promise<ReviewFeedback | null> {
+  try {
+    const { data, error } = await supabase
+      .from('review_feedback')
+      .insert({
+        task_id: input.task_id,
+        reviewer: input.reviewer,
+        feedback_type: input.feedback_type,
+        description: input.description,
+        suggestion: input.suggestion || null,
+        was_applied: false,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania review feedback:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano review feedback:', data.id);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania review feedback:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera review feedback dla zadania
+ */
+export async function getReviewFeedback(taskId: string): Promise<ReviewFeedback[]> {
+  try {
+    const { data, error } = await supabase
+      .from('review_feedback')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Błąd pobierania review feedback:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania review feedback:', error);
+    return [];
+  }
+}
+
+// ============================================
+// BACKLOG (Pomysły/TODO)
+// ============================================
+
+/**
+ * Zapisuje element do backlogu
+ */
+export async function saveBacklogItem(input: SaveBacklogInput): Promise<BacklogItem | null> {
+  try {
+    const { data, error } = await supabase
+      .from('backlog')
+      .insert({
+        project_id: input.project_id,
+        title: input.title,
+        description: input.description || null,
+        priority: input.priority || 'medium',
+        status: 'idea',
+        tags: input.tags || [],
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania backlog item:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano backlog item:', data.id, '-', data.title);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania backlog item:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera backlog dla projektu
+ */
+export async function getBacklog(projectId: string): Promise<BacklogItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('backlog')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Błąd pobierania backlog:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania backlog:', error);
+    return [];
+  }
+}
+
+/**
+ * Aktualizuje status elementu backlogu
+ */
+export async function updateBacklogStatus(id: string, status: string): Promise<void> {
+  try {
+    await supabase
+      .from('backlog')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id);
+  } catch (error) {
+    console.error('Błąd aktualizacji backlog status:', error);
+  }
+}
+
+// ============================================
+// DOCS (Dokumentacja)
+// ============================================
+
+/**
+ * Zapisuje dokumentację
+ */
+export async function saveDoc(input: SaveDocInput): Promise<Doc | null> {
+  try {
+    const { data, error } = await supabase
+      .from('docs')
+      .insert({
+        project_id: input.project_id,
+        title: input.title,
+        content: input.content,
+        doc_type: input.doc_type,
+        file_path: input.file_path || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania doc:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano doc:', data.id, '-', data.title);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania doc:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera dokumentację dla projektu
+ */
+export async function getDocs(projectId: string): Promise<Doc[]> {
+  try {
+    const { data, error } = await supabase
+      .from('docs')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('Błąd pobierania docs:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania docs:', error);
+    return [];
+  }
+}
+
+// ============================================
+// MILESTONES (Kamienie milowe)
+// ============================================
+
+/**
+ * Zapisuje kamień milowy
+ */
+export async function saveMilestone(input: SaveMilestoneInput): Promise<Milestone | null> {
+  try {
+    const { data, error } = await supabase
+      .from('milestones')
+      .insert({
+        project_id: input.project_id,
+        title: input.title,
+        description: input.description || null,
+        status: 'planned',
+        target_date: input.target_date || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania milestone:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano milestone:', data.id, '-', data.title);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania milestone:', error);
+    return null;
+  }
+}
+
+/**
+ * Pobiera kamienie milowe dla projektu
+ */
+export async function getMilestones(projectId: string): Promise<Milestone[]> {
+  try {
+    const { data, error } = await supabase
+      .from('milestones')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('target_date', { ascending: true });
+
+    if (error) {
+      console.error('Błąd pobierania milestones:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd pobierania milestones:', error);
+    return [];
+  }
+}
+
+/**
+ * Aktualizuje status kamienia milowego
+ */
+export async function updateMilestoneStatus(id: string, status: string): Promise<void> {
+  try {
+    const updates: Record<string, unknown> = { status };
+    if (status === 'completed') {
+      updates.completed_date = new Date().toISOString();
+    }
+    await supabase.from('milestones').update(updates).eq('id', id);
+  } catch (error) {
+    console.error('Błąd aktualizacji milestone status:', error);
+  }
+}
+
+// ============================================
+// MEMORY_EMBEDDINGS (Semantic Search)
+// ============================================
+
+/**
+ * Zapisuje embedding do pamięci (bez faktycznego embedowania - wymaga osobnego serwisu)
+ */
+export async function saveMemoryEmbedding(
+  content: string,
+  contentType: 'code' | 'decision' | 'bug' | 'rule' | 'doc' | 'conversation',
+  projectId?: string,
+  sourceId?: string
+): Promise<MemoryEmbedding | null> {
+  try {
+    const { data, error } = await supabase
+      .from('memory_embeddings')
+      .insert({
+        project_id: projectId || null,
+        content,
+        content_type: contentType,
+        source_id: sourceId || null,
+        // embedding będzie dodany przez trigger/funkcję w Supabase
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AUTO-SAVE] Błąd zapisywania memory embedding:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Zapisano memory embedding:', data.id, '-', contentType);
+    return data;
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania memory embedding:', error);
+    return null;
+  }
+}
+
+/**
+ * Wyszukuje podobne embeddingi (wymaga pg_vector w Supabase)
+ */
+export async function searchSimilarEmbeddings(
+  queryEmbedding: number[],
+  projectId?: string,
+  limit: number = 5
+): Promise<MemoryEmbedding[]> {
+  try {
+    // Ta funkcja wymaga RPC w Supabase z pg_vector
+    const { data, error } = await supabase.rpc('search_similar_embeddings', {
+      query_embedding: queryEmbedding,
+      match_project_id: projectId || null,
+      match_count: limit,
+    });
+
+    if (error) {
+      console.error('Błąd wyszukiwania embeddings:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Błąd wyszukiwania embeddings:', error);
+    return [];
+  }
+}
+
+// ============================================
+// PROJEKTY - rozszerzenie (tworzenie)
+// ============================================
+
+/**
+ * Tworzy nowy projekt
+ */
+export async function createProject(
+  name: string,
+  description?: string,
+  repoUrl?: string,
+  techStack?: string[]
+): Promise<Project | null> {
+  try {
+    const { data, error } = await supabase
+      .from('projects')
+      .insert({
+        name,
+        description: description || null,
+        repo_url: repoUrl || null,
+        tech_stack: techStack || [],
+        status: 'active',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Błąd tworzenia projektu:', error);
+      return null;
+    }
+
+    console.log('[AUTO-SAVE] Utworzono projekt:', data.id, '-', data.name);
+    return data;
+  } catch (error) {
+    console.error('Błąd tworzenia projektu:', error);
+    return null;
+  }
+}
+
+/**
+ * Aktualizuje projekt
+ */
+export async function updateProject(id: string, updates: Partial<Project>): Promise<Project | null> {
+  try {
+    const { data, error } = await supabase
+      .from('projects')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Błąd aktualizacji projektu:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Błąd aktualizacji projektu:', error);
     return null;
   }
 }

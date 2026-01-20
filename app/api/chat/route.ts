@@ -20,9 +20,28 @@ import {
   getPreferences,
   savePreference,
   deletePreference,
+  // Nowe funkcje auto-save
+  saveLLMResponse,
+  saveDecision,
+  saveBugHistory,
+  savePrompt,
+  saveProjectRule,
+  saveTechStack,
+  saveStyleGuide,
 } from '@/lib/supabase';
 import { isGenerateAction, CHAT_HISTORY_LIMIT } from '@/lib/constants';
-import type { ChatRequest, ChatMessage, ChatMode, MessageSender, AIContext, Preference } from '@/lib/types';
+import type {
+  ChatRequest,
+  ChatMessage,
+  ChatMode,
+  AIContext,
+  Preference,
+  AutoSavePatternType,
+  AIResponseMetadata,
+  LLMTarget,
+  RuleCategory,
+  TechCategory,
+} from '@/lib/types';
 
 // ============================================
 // WZORCE KOMEND PREFERENCJI
@@ -42,6 +61,283 @@ const PREFERENCE_PATTERNS = {
   listAlt: /(?:poka[zż]|pokaz)\s*preferencje/i,
   listEn: /(?:show|list|what are)\s*(?:my)?\s*preferences/i,
 };
+
+// ============================================
+// WZORCE AUTO-SAVE (wykrywanie w odpowiedziach AI)
+// ============================================
+
+const AUTO_SAVE_PATTERNS: Record<AutoSavePatternType, RegExp> = {
+  decision: /(?:zdecydowałem|decyzja|wybieramy|lepszym rozwiązaniem|postanowiłem|wybieram|decyduję|będziemy używać|rekomenduj[eę]|zalecam)/i,
+  bug: /(?:bug|błąd|fix|naprawiłem|problem był|rozwiązanie|naprawiono|error|issue|poprawka|debugowanie)/i,
+  prompt: /(?:prompt dla|wklej do claude|użyj tego promptu|skopiuj ten prompt|prompt:)/i,
+  rule: /(?:zawsze używaj|nigdy nie|preferuj[eę]|zasada|reguła|konwencja|standard|wymóg)/i,
+  tech: /(?:używam|stack|framework|biblioteka|technologia|język programowania|baza danych)/i,
+  feedback: /(?:\[BUG\]|\[OPTYMALIZACJA\]|\[EDGE CASE\]|\[BEST PRACTICE\]|\[UI\]|\[UX\]|\[A11Y\])/i,
+};
+
+// ============================================
+// FUNKCJE WYKRYWANIA AUTO-SAVE
+// ============================================
+
+/**
+ * Wykrywa wzorce w odpowiedzi AI i zwraca listę wykrytych typów
+ */
+function detectAutoSavePatterns(content: string): AutoSavePatternType[] {
+  const detected: AutoSavePatternType[] = [];
+
+  for (const [type, pattern] of Object.entries(AUTO_SAVE_PATTERNS)) {
+    if (pattern.test(content)) {
+      detected.push(type as AutoSavePatternType);
+    }
+  }
+
+  return detected;
+}
+
+/**
+ * Wyciąga tytuł decyzji z treści
+ */
+function extractDecisionTitle(content: string): string {
+  // Szukaj zdania z decyzją
+  const patterns = [
+    /(?:zdecydowałem|wybieram|decyduję)\s+(?:się\s+)?(?:na|że|aby)?\s*(.{10,100})/i,
+    /(?:lepszym rozwiązaniem|rekomenduj[eę]|zalecam)\s+(?:jest|będzie)?\s*(.{10,100})/i,
+    /(?:będziemy używać|używamy)\s+(.{5,50})/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = content.match(pattern);
+    if (match) {
+      return match[1].split(/[.!?\n]/)[0].trim().slice(0, 100);
+    }
+  }
+
+  return 'Decyzja architektoniczna';
+}
+
+/**
+ * Wyciąga informacje o bugu
+ */
+function extractBugInfo(content: string): { description: string; solution: string } {
+  const bugMatch = content.match(/(?:bug|błąd|problem)[\s:]+(.{10,200})/i);
+  const fixMatch = content.match(/(?:fix|napraw|rozwiązan|poprawk)[\s:]+(.{10,300})/i);
+
+  return {
+    description: bugMatch ? bugMatch[1].split(/[.!?\n]/)[0].trim() : 'Bug znaleziony przez AI',
+    solution: fixMatch ? fixMatch[1].split(/\n\n/)[0].trim() : content.slice(0, 500),
+  };
+}
+
+/**
+ * Wyciąga prompt z treści
+ */
+function extractPrompt(content: string): { name: string; target: LLMTarget; promptContent: string } | null {
+  // Szukaj bloku kodu z promptem
+  const codeBlockMatch = content.match(/```(?:prompt|text)?\n([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    const promptContent = codeBlockMatch[1].trim();
+    const target: LLMTarget = content.toLowerCase().includes('codex') ? 'codex' :
+                              content.toLowerCase().includes('gemini') ? 'gemini' : 'claude_code';
+
+    return {
+      name: `Prompt ${new Date().toISOString().slice(0, 10)}`,
+      target,
+      promptContent,
+    };
+  }
+  return null;
+}
+
+/**
+ * Wyciąga zasadę projektu
+ */
+function extractProjectRule(content: string): { rule: string; category: RuleCategory } | null {
+  const rulePatterns = [
+    { regex: /(?:zawsze używaj|zawsze stosuj)\s+(.{5,100})/i, category: 'code_style' as RuleCategory },
+    { regex: /(?:nigdy nie|unikaj)\s+(.{5,100})/i, category: 'code_style' as RuleCategory },
+    { regex: /(?:konwencja|standard)[\s:]+(.{10,150})/i, category: 'naming' as RuleCategory },
+    { regex: /(?:architektura|wzorzec)[\s:]+(.{10,150})/i, category: 'architecture' as RuleCategory },
+    { regex: /(?:test|testuj)[\s:]+(.{10,150})/i, category: 'testing' as RuleCategory },
+    { regex: /(?:bezpiecze[ńn]stwo|security)[\s:]+(.{10,150})/i, category: 'security' as RuleCategory },
+  ];
+
+  for (const { regex, category } of rulePatterns) {
+    const match = content.match(regex);
+    if (match) {
+      return {
+        rule: match[1].split(/[.!?\n]/)[0].trim(),
+        category,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Wyciąga tech stack
+ */
+function extractTechStack(content: string, userMessage: string): { name: string; category: TechCategory }[] {
+  const techItems: { name: string; category: TechCategory }[] = [];
+  const combined = `${userMessage} ${content}`;
+
+  // Mapowanie technologii na kategorie
+  const techMap: Record<string, TechCategory> = {
+    // Frameworki
+    'react': 'framework', 'next.js': 'framework', 'nextjs': 'framework', 'vue': 'framework',
+    'angular': 'framework', 'svelte': 'framework', 'nuxt': 'framework', 'remix': 'framework',
+    // Biblioteki
+    'tailwind': 'styling', 'chakra': 'styling', 'mui': 'styling', 'bootstrap': 'styling',
+    'zustand': 'state', 'redux': 'state', 'jotai': 'state', 'recoil': 'state', 'mobx': 'state',
+    'axios': 'library', 'tanstack': 'library', 'react-query': 'library', 'swr': 'library',
+    // Języki
+    'typescript': 'language', 'javascript': 'language', 'python': 'language', 'rust': 'language',
+    // Bazy danych
+    'supabase': 'database', 'postgresql': 'database', 'postgres': 'database', 'mongodb': 'database',
+    'mysql': 'database', 'prisma': 'database', 'drizzle': 'database',
+    // Testowanie
+    'jest': 'testing', 'vitest': 'testing', 'cypress': 'testing', 'playwright': 'testing',
+    // Build
+    'vite': 'build', 'webpack': 'build', 'turbopack': 'build', 'esbuild': 'build',
+  };
+
+  for (const [tech, category] of Object.entries(techMap)) {
+    const regex = new RegExp(`\\b${tech}\\b`, 'i');
+    if (regex.test(combined)) {
+      techItems.push({ name: tech.charAt(0).toUpperCase() + tech.slice(1), category });
+    }
+  }
+
+  return techItems;
+}
+
+/**
+ * Przetwarza odpowiedź AI i wykonuje auto-save do bazy
+ */
+async function processAutoSave(
+  content: string,
+  userMessage: string,
+  llmSource: 'claude' | 'gpt' | 'gemini',
+  projectId: string | undefined,
+  tokensUsed: number,
+  conversationId: string
+): Promise<AIResponseMetadata> {
+  const detectedPatterns = detectAutoSavePatterns(content);
+  const autoSaved: AIResponseMetadata['autoSaved'] = [];
+
+  console.log(`[AUTO-SAVE] Wykryto wzorce w odpowiedzi ${llmSource}:`, detectedPatterns);
+
+  // Zawsze zapisz odpowiedź LLM
+  try {
+    const llmResponse = await saveLLMResponse({
+      conversation_id: conversationId,
+      llm_source: llmSource,
+      prompt_used: userMessage.slice(0, 1000),
+      response: content.slice(0, 5000),
+      tokens_used: tokensUsed,
+    });
+    if (llmResponse) {
+      autoSaved.push({ table: 'llm_responses', id: llmResponse.id, type: 'feedback' });
+    }
+  } catch (error) {
+    console.error('[AUTO-SAVE] Błąd zapisywania LLM response:', error);
+  }
+
+  // Jeśli nie ma projectId, nie możemy zapisywać do tabel związanych z projektem
+  if (!projectId) {
+    return { tokensUsed, detectedPatterns, autoSaved };
+  }
+
+  // Przetwórz wykryte wzorce
+  for (const patternType of detectedPatterns) {
+    try {
+      switch (patternType) {
+        case 'decision': {
+          const title = extractDecisionTitle(content);
+          const decision = await saveDecision({
+            project_id: projectId,
+            title,
+            description: content.slice(0, 500),
+            reason: `Wykryte automatycznie z odpowiedzi ${llmSource}`,
+          });
+          if (decision) {
+            autoSaved.push({ table: 'decisions', id: decision.id, type: 'decision' });
+          }
+          break;
+        }
+
+        case 'bug': {
+          const bugInfo = extractBugInfo(content);
+          const bug = await saveBugHistory({
+            project_id: projectId,
+            description: bugInfo.description,
+            solution: bugInfo.solution,
+          });
+          if (bug) {
+            autoSaved.push({ table: 'bugs_history', id: bug.id, type: 'bug' });
+          }
+          break;
+        }
+
+        case 'prompt': {
+          const promptInfo = extractPrompt(content);
+          if (promptInfo) {
+            const prompt = await savePrompt({
+              name: promptInfo.name,
+              llm_target: promptInfo.target,
+              content: promptInfo.promptContent,
+            });
+            if (prompt) {
+              autoSaved.push({ table: 'prompts', id: prompt.id, type: 'prompt' });
+            }
+          }
+          break;
+        }
+
+        case 'rule': {
+          const ruleInfo = extractProjectRule(content);
+          if (ruleInfo) {
+            const rule = await saveProjectRule({
+              project_id: projectId,
+              rule: ruleInfo.rule,
+              category: ruleInfo.category,
+            });
+            if (rule) {
+              autoSaved.push({ table: 'project_rules', id: rule.id, type: 'rule' });
+            }
+          }
+          break;
+        }
+
+        case 'tech': {
+          const techItems = extractTechStack(content, userMessage);
+          for (const tech of techItems) {
+            const saved = await saveTechStack({
+              project_id: projectId,
+              name: tech.name,
+              category: tech.category,
+            });
+            if (saved) {
+              autoSaved.push({ table: 'tech_stack', id: saved.id, type: 'tech' });
+            }
+          }
+          break;
+        }
+
+        // feedback z code review jest już obsłużony przez zapisywanie LLM response
+        case 'feedback':
+          break;
+      }
+    } catch (error) {
+      console.error(`[AUTO-SAVE] Błąd przetwarzania wzorca ${patternType}:`, error);
+    }
+  }
+
+  if (autoSaved.length > 0) {
+    console.log(`[AUTO-SAVE] Zapisano ${autoSaved.length} elementów do bazy:`, autoSaved);
+  }
+
+  return { tokensUsed, detectedPatterns, autoSaved };
+}
 
 /**
  * Sprawdza czy wiadomość to komenda preferencji
@@ -241,14 +537,15 @@ function createSSEStream() {
   return { stream, sendEvent, close };
 }
 
-// Główna funkcja orkiestrująca AI
+// Główna funkcja orkiestrująca AI z auto-save
 async function orchestrateAI(
   sendEvent: (data: object) => void,
   close: () => void,
   conversationId: string,
   message: string,
   mode: ChatMode,
-  context: AIContext
+  context: AIContext,
+  projectId?: string
 ) {
   try {
     const action = isGenerateAction(message) ? 'generate' : 'discuss';
@@ -256,23 +553,44 @@ async function orchestrateAI(
       ? `${message}\n\n[TRYB GENEROWANIA - napisz pełny, działający kod]`
       : message;
 
+    // Zbiorcze statystyki tokenów
+    let totalTokens = 0;
+    const allAutoSaved: AIResponseMetadata['autoSaved'] = [];
+
     // 1. CLAUDE
     sendEvent({ type: 'typing', sender: 'claude' });
 
-    let claudeResponse: string;
+    let claudeResult;
     try {
-      claudeResponse = await callClaude(enhancedMessage, context.history, context);
+      claudeResult = await callClaude(enhancedMessage, context.history, context);
     } catch (error) {
       sendEvent({ type: 'error', error: `Błąd Claude: ${error instanceof Error ? error.message : 'nieznany'}` });
       close();
       return;
     }
 
+    const claudeResponse = claudeResult.content;
+    totalTokens += claudeResult.metadata.tokensUsed;
+
+    // Auto-save dla Claude
+    const claudeAutoSave = await processAutoSave(
+      claudeResponse,
+      message,
+      'claude',
+      projectId,
+      claudeResult.metadata.tokensUsed,
+      conversationId
+    );
+    allAutoSaved.push(...claudeAutoSave.autoSaved);
+
     sendEvent({ type: 'message', sender: 'claude', content: claudeResponse });
     await saveChatMessage(conversationId, 'claude', claudeResponse);
 
     if (mode === 'solo') {
-      sendEvent({ type: 'done' });
+      sendEvent({
+        type: 'done',
+        metadata: { totalTokens, autoSaved: allAutoSaved }
+      });
       close();
       return;
     }
@@ -280,9 +598,23 @@ async function orchestrateAI(
     // 2. GPT
     sendEvent({ type: 'typing', sender: 'gpt' });
 
+    let gptResult;
     let gptResponse: string;
     try {
-      gptResponse = await callGPT(message, claudeResponse, context.history, context);
+      gptResult = await callGPT(message, claudeResponse, context.history, context);
+      gptResponse = gptResult.content;
+      totalTokens += gptResult.metadata.tokensUsed;
+
+      // Auto-save dla GPT
+      const gptAutoSave = await processAutoSave(
+        gptResponse,
+        message,
+        'gpt',
+        projectId,
+        gptResult.metadata.tokensUsed,
+        conversationId
+      );
+      allAutoSaved.push(...gptAutoSave.autoSaved);
     } catch (error) {
       console.error('GPT error:', error);
       gptResponse = 'Nie mogłem przeanalizować kodu w tym momencie.';
@@ -294,9 +626,23 @@ async function orchestrateAI(
     if (mode === 'duo') {
       sendEvent({ type: 'typing', sender: 'claude' });
 
+      let claudeSummaryResult;
       let claudeSummary: string;
       try {
-        claudeSummary = await callClaudeSummary(message, claudeResponse, gptResponse, context);
+        claudeSummaryResult = await callClaudeSummary(message, claudeResponse, gptResponse, context);
+        claudeSummary = claudeSummaryResult.content;
+        totalTokens += claudeSummaryResult.metadata.tokensUsed;
+
+        // Auto-save dla Claude Summary
+        const summaryAutoSave = await processAutoSave(
+          claudeSummary,
+          message,
+          'claude',
+          projectId,
+          claudeSummaryResult.metadata.tokensUsed,
+          conversationId
+        );
+        allAutoSaved.push(...summaryAutoSave.autoSaved);
       } catch (error) {
         claudeSummary = 'Podsumowując feedback od GPT - moja oryginalna propozycja pozostaje aktualna.';
       }
@@ -304,7 +650,10 @@ async function orchestrateAI(
       sendEvent({ type: 'message', sender: 'claude', content: claudeSummary });
       await saveChatMessage(conversationId, 'claude', claudeSummary);
 
-      sendEvent({ type: 'done' });
+      sendEvent({
+        type: 'done',
+        metadata: { totalTokens, autoSaved: allAutoSaved }
+      });
       close();
       return;
     }
@@ -312,9 +661,23 @@ async function orchestrateAI(
     // 3. GEMINI
     sendEvent({ type: 'typing', sender: 'gemini' });
 
+    let geminiResult;
     let geminiResponse: string;
     try {
-      geminiResponse = await callGemini(message, claudeResponse, gptResponse, context.history, context);
+      geminiResult = await callGemini(message, claudeResponse, gptResponse, context.history, context);
+      geminiResponse = geminiResult.content;
+      totalTokens += geminiResult.metadata.tokensUsed;
+
+      // Auto-save dla Gemini
+      const geminiAutoSave = await processAutoSave(
+        geminiResponse,
+        message,
+        'gemini',
+        projectId,
+        geminiResult.metadata.tokensUsed,
+        conversationId
+      );
+      allAutoSaved.push(...geminiAutoSave.autoSaved);
     } catch (error) {
       console.error('Gemini error:', error);
       geminiResponse = 'Nie mogłem przeanalizować UI/UX w tym momencie.';
@@ -326,9 +689,23 @@ async function orchestrateAI(
     // 4. CLAUDE final
     sendEvent({ type: 'typing', sender: 'claude' });
 
+    let claudeFinalResult;
     let claudeFinal: string;
     try {
-      claudeFinal = await callClaudeFinal(message, claudeResponse, gptResponse, geminiResponse, context);
+      claudeFinalResult = await callClaudeFinal(message, claudeResponse, gptResponse, geminiResponse, context);
+      claudeFinal = claudeFinalResult.content;
+      totalTokens += claudeFinalResult.metadata.tokensUsed;
+
+      // Auto-save dla Claude Final
+      const finalAutoSave = await processAutoSave(
+        claudeFinal,
+        message,
+        'claude',
+        projectId,
+        claudeFinalResult.metadata.tokensUsed,
+        conversationId
+      );
+      allAutoSaved.push(...finalAutoSave.autoSaved);
     } catch (error) {
       claudeFinal = 'Uwzględniając feedback od GPT i Gemini - oto finalna wersja mojej propozycji.';
     }
@@ -336,7 +713,13 @@ async function orchestrateAI(
     sendEvent({ type: 'message', sender: 'claude', content: claudeFinal });
     await saveChatMessage(conversationId, 'claude', claudeFinal);
 
-    sendEvent({ type: 'done' });
+    // Podsumowanie
+    console.log(`[ORCHESTRATE] Zakończono. Tokeny: ${totalTokens}, Auto-saved: ${allAutoSaved.length} items`);
+
+    sendEvent({
+      type: 'done',
+      metadata: { totalTokens, autoSaved: allAutoSaved }
+    });
     close();
 
   } catch (error) {
@@ -476,8 +859,8 @@ export async function POST(request: NextRequest) {
       projectContext: projectContext || undefined,
     };
 
-    // Uruchom orkiestrację
-    orchestrateAI(sendEvent, close, conversationId, message, mode, context);
+    // Uruchom orkiestrację z projectId dla auto-save
+    orchestrateAI(sendEvent, close, conversationId, message, mode, context, project_id);
 
     return new Response(stream, {
       headers: {

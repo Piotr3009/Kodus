@@ -8,7 +8,7 @@
  */
 
 import OpenAI from 'openai';
-import type { ChatMessage, AIContext, Preference } from '../types';
+import type { ChatMessage, AIContext, Preference, AIResponseWithMetadata } from '../types';
 
 // Leniwa inicjalizacja klienta OpenAI
 let openaiClient: OpenAI | null = null;
@@ -130,13 +130,14 @@ function buildContextInfo(context?: AIContext): string {
 
 /**
  * Wywołuje GPT do review kodu/odpowiedzi Claude'a
+ * Zwraca odpowiedź z metadanymi o tokenach
  */
 export async function callGPT(
   userMessage: string,
   claudeResponse: string,
   history: ChatMessage[],
   context?: AIContext
-): Promise<string> {
+): Promise<AIResponseWithMetadata> {
   const contextInfo = buildContextInfo(context);
   const systemPrompt = GPT_SYSTEM_PROMPT + contextInfo;
 
@@ -158,9 +159,40 @@ Daj swój feedback jako code reviewer. Bądź konstruktywny i konkretny:`;
       ],
     });
 
-    return response.choices[0]?.message?.content || 'Nie mogłem wygenerować feedbacku.';
+    const content = response.choices[0]?.message?.content || 'Nie mogłem wygenerować feedbacku.';
+
+    // Pobierz informacje o tokenach
+    const inputTokens = response.usage?.prompt_tokens || 0;
+    const outputTokens = response.usage?.completion_tokens || 0;
+    const tokensUsed = response.usage?.total_tokens || (inputTokens + outputTokens);
+
+    console.log(`[GPT] Tokeny: input=${inputTokens}, output=${outputTokens}, total=${tokensUsed}`);
+
+    return {
+      content,
+      metadata: {
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        detectedPatterns: [],
+        autoSaved: [],
+      },
+    };
   } catch (error) {
     console.error('Błąd GPT:', error);
     throw new Error(`Błąd komunikacji z GPT: ${error instanceof Error ? error.message : 'nieznany błąd'}`);
   }
+}
+
+/**
+ * Wywołuje GPT (stara wersja dla kompatybilności - zwraca string)
+ */
+export async function callGPTSimple(
+  userMessage: string,
+  claudeResponse: string,
+  history: ChatMessage[],
+  context?: AIContext
+): Promise<string> {
+  const result = await callGPT(userMessage, claudeResponse, history, context);
+  return result.content;
 }
