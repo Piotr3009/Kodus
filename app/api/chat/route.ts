@@ -315,7 +315,7 @@ async function orchestrateAI(
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
-    const { conversation_id, message, mode, project_id, context: requestContext } = body;
+    const { conversation_id, message, mode, project_id, projectContext, context: requestContext } = body;
 
     // Walidacja
     if (!message || !mode) {
@@ -431,6 +431,7 @@ export async function POST(request: NextRequest) {
       preferences,  // Dodaj preferencje do kontekstu AI
       project: project || undefined,
       editorContent: requestContext?.editorContent,
+      projectContext: projectContext || undefined,  // Kontekst projektu (struktura + pliki)
     };
 
     // Uruchom orkiestrację w tle (nie blokuje response)

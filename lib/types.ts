@@ -290,6 +290,7 @@ export interface AIContext {
   preferences?: Preference[];
   project?: Project;
   editorContent?: string;
+  projectContext?: string;  // Kontekst projektu (struktura + zawartość plików)
 }
 
 // Preferencje użytkownika (stary format - do usunięcia w przyszłości)
@@ -318,6 +319,7 @@ export interface ChatRequest {
   message: string;
   mode: ChatMode;
   project_id?: string;
+  projectContext?: string;
   context?: {
     editorContent?: string;
     action?: 'generate' | 'discuss';
@@ -386,6 +388,12 @@ export interface ConversationListProps {
   onSearchChange?: (query: string) => void;
 }
 
+// Plik dodany do kontekstu
+export interface AdditionalFile {
+  path: string;
+  content: string;
+}
+
 // Hook returns
 export interface UseChatReturn {
   messages: ChatMessage[];
@@ -399,6 +407,13 @@ export interface UseChatReturn {
   error: string | null;
   conversations: Conversation[];
   loadConversations: () => Promise<void>;
+  // Nowe pola dla kontekstu projektu
+  projectContext: string | null;
+  additionalFiles: AdditionalFile[];
+  updateProjectContext: (context: string | null) => void;
+  addFile: (path: string, content: string) => void;
+  removeFile: (path: string) => void;
+  clearProjectContext: () => void;
 }
 
 export interface UseCodeEditorReturn {
