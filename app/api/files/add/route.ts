@@ -1,33 +1,40 @@
-/**
- * API Route: /api/files/add
- * Pobiera zawartość pojedynczego pliku do kontekstu AI
- */
+// ========================================
+// ZAMIEŃ CAŁY PLIK: app/api/files/add/route.ts
+// ========================================
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getFileForContext } from '@/lib/files';
+import { getGitHubFileForContext } from '@/lib/github';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { path } = body;
-
-    if (!path || typeof path !== 'string') {
+    const { path, owner, repo, branch = 'main' } = body;
+    
+    if (!path) {
       return NextResponse.json(
         { error: 'Brak ścieżki pliku' },
         { status: 400 }
       );
     }
-
-    const content = await getFileForContext(path);
-
-    return NextResponse.json({
-      content,
-      path,
-    });
+    
+    let content: string;
+    
+    if (owner && repo) {
+      // Pobierz z GitHub API
+      console.log(`Pobieranie pliku z GitHub: ${owner}/${repo}/${path}`);
+      content = await getGitHubFileForContext(owner, repo, path, branch);
+    } else {
+      // Fallback: pobierz lokalnie
+      console.log(`Pobieranie pliku lokalnie: ${path}`);
+      content = await getFileForContext(path);
+    }
+    
+    return NextResponse.json({ content, path });
   } catch (error) {
-    console.error('Error getting file for context:', error);
+    console.error('Błąd pobierania pliku:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Błąd pobierania pliku' },
+      { error: error instanceof Error ? error.message : 'Nieznany błąd' },
       { status: 500 }
     );
   }

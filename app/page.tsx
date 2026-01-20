@@ -1,3 +1,7 @@
+// ========================================
+// ZAMIEŃ CAŁY PLIK: app/page.tsx
+// ========================================
+
 /**
  * Główna strona Kodus - Chat Interface z Multi-AI Team
  * Layout: sidebar (konwersacje) + main (chat + editor)
@@ -58,6 +62,21 @@ export default function KodusChatPage() {
   // Files hook (dla kontekstu projektu)
   const files = useFiles();
 
+  // ==========================================
+  // NOWE: Synchronizuj GitHub repo z hookiem plików
+  // ==========================================
+  useEffect(() => {
+    if (github.isConnected && github.repoInfo) {
+      files.setRepoInfo({
+        owner: github.repoInfo.owner,
+        repo: github.repoInfo.repo,
+        branch: github.repoInfo.branch,
+      });
+    } else {
+      files.setRepoInfo(null);
+    }
+  }, [github.isConnected, github.repoInfo?.owner, github.repoInfo?.repo, github.repoInfo?.branch]);
+
   // Callback do ładowania kontekstu projektu
   const handleLoadContext = useCallback(async (): Promise<string | null> => {
     const context = await files.loadProjectContext();
@@ -83,9 +102,9 @@ export default function KodusChatPage() {
   }, [files, chat]);
 
   // Callback do ładowania plików z GitHub do edytora
-  const handleGitHubFilesLoaded = useCallback((files: any[]) => {
+  const handleGitHubFilesLoaded = useCallback((loadedFiles: any[]) => {
     // Dodaj pliki do edytora
-    for (const file of files) {
+    for (const file of loadedFiles) {
       editor.insertCode(file.content, file.name, file.language);
     }
   }, [editor]);
@@ -299,6 +318,7 @@ export default function KodusChatPage() {
                 onLoadContext={handleLoadContext}
                 onAddFile={handleAddFile}
                 onRemoveFile={handleRemoveFile}
+                repoInfo={github.repoInfo}
               />
             </div>
 
@@ -352,6 +372,7 @@ export default function KodusChatPage() {
                 onLoadContext={handleLoadContext}
                 onAddFile={handleAddFile}
                 onRemoveFile={handleRemoveFile}
+                repoInfo={github.repoInfo}
               />
             ) : (
               <CodeEditor

@@ -1,12 +1,17 @@
+// ========================================
+// ZAMIEŃ CAŁY PLIK: components/chat/ContextLoader.tsx
+// ========================================
+
 'use client';
 
 /**
  * ContextLoader - komponent do ładowania kontekstu projektu dla AI
  * Przyciski: "Załaduj kontekst repo" i "Dodaj plik"
+ * Obsługuje zarówno pliki lokalne jak i z GitHub
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { FolderOpen, Plus, X, Check, Loader2, ChevronDown, FileText } from 'lucide-react';
+import { FolderOpen, Plus, X, Check, Loader2, ChevronDown, FileText, Github } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface FileInfo {
@@ -27,6 +32,8 @@ interface ContextLoaderProps {
   onLoadContext: () => Promise<string | null>;
   onAddFile: (path: string) => Promise<string | null>;
   onRemoveFile: (path: string) => void;
+  // Info o połączonym repo GitHub - akceptuje dowolny obiekt z owner/repo/branch
+  repoInfo?: { owner: string; repo: string; branch: string } | null;
 }
 
 export function ContextLoader({
@@ -36,17 +43,31 @@ export function ContextLoader({
   onLoadContext,
   onAddFile,
   onRemoveFile,
+  repoInfo,
 }: ContextLoaderProps) {
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [files, setFiles] = useState<FileInfo[]>([]);
-  const [currentPath, setCurrentPath] = useState('.');
+  const [currentPath, setCurrentPath] = useState('');
   const [loadingFiles, setLoadingFiles] = useState(false);
 
-  // Pobierz listę plików
+  // Buduj parametry URL z info o repo
+  const buildParams = useCallback((additionalParams: Record<string, string> = {}) => {
+    const params = new URLSearchParams(additionalParams);
+    
+    if (repoInfo) {
+      params.set('owner', repoInfo.owner);
+      params.set('repo', repoInfo.repo);
+      params.set('branch', repoInfo.branch);
+    }
+    
+    return params;
+  }, [repoInfo]);
+
+  // Pobierz listę plików (z GitHub lub lokalnie)
   const fetchFiles = useCallback(async (path: string) => {
     setLoadingFiles(true);
     try {
-      const params = new URLSearchParams({ path });
+      const params = buildParams({ path });
       const response = await fetch(`/api/files/list?${params}`);
       if (response.ok) {
         const data = await response.json();
@@ -58,14 +79,20 @@ export function ContextLoader({
     } finally {
       setLoadingFiles(false);
     }
-  }, []);
+  }, [buildParams]);
 
   // Pobierz pliki przy otwarciu
   useEffect(() => {
     if (showFilePicker) {
-      fetchFiles('.');
+      fetchFiles('');
     }
   }, [showFilePicker, fetchFiles]);
+
+  // Reset przy zmianie repo
+  useEffect(() => {
+    setFiles([]);
+    setCurrentPath('');
+  }, [repoInfo?.owner, repoInfo?.repo]);
 
   // Obsługa kliknięcia na plik/folder
   const handleFileClick = async (file: FileInfo) => {
@@ -79,8 +106,8 @@ export function ContextLoader({
 
   // Nawigacja w górę
   const goUp = () => {
-    if (currentPath === '.' || currentPath === '') return;
-    const parentPath = currentPath.split('/').slice(0, -1).join('/') || '.';
+    if (currentPath === '' || currentPath === '.') return;
+    const parentPath = currentPath.split('/').slice(0, -1).join('/') || '';
     fetchFiles(parentPath);
   };
 
@@ -92,6 +119,14 @@ export function ContextLoader({
   return (
     <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/50">
       <div className="flex items-center gap-2 flex-wrap">
+        {/* Info o źródle */}
+        {repoInfo && (
+          <span className="flex items-center gap-1 text-xs text-zinc-500 mr-2">
+            <Github size={12} />
+            {repoInfo.owner}/{repoInfo.repo}
+          </span>
+        )}
+
         {/* Przycisk załaduj kontekst */}
         <button
           onClick={onLoadContext}
@@ -111,7 +146,7 @@ export function ContextLoader({
           ) : (
             <FolderOpen size={16} />
           )}
-          {contextLoaded ? 'Kontekst załadowany' : 'Załaduj kontekst repo'}
+          {contextLoaded ? 'Kontekst załadowany' : 'Załaduj kontekst'}
         </button>
 
         {/* Przycisk dodaj plik */}
@@ -133,12 +168,18 @@ export function ContextLoader({
 
           {/* Dropdown z listą plików */}
           {showFilePicker && (
-            <div className="absolute top-full left-0 mt-2 w-72 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 overflow-hidden">
+            <div className="absolute top-full left-0 mt-2 w-80 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 overflow-hidden">
               {/* Nagłówek z nawigacją */}
               <div className="px-3 py-2 border-b border-zinc-700 bg-zinc-900/50 flex items-center gap-2">
-                <FileText size={14} className="text-zinc-500" />
-                <span className="text-xs text-zinc-400 truncate flex-1">{currentPath}</span>
-                {currentPath !== '.' && (
+                {repoInfo ? (
+                  <Github size={14} className="text-zinc-500" />
+                ) : (
+                  <FileText size={14} className="text-zinc-500" />
+                )}
+                <span className="text-xs text-zinc-400 truncate flex-1">
+                  {currentPath || (repoInfo ? `${repoInfo.repo}/` : '/')}
+                </span>
+                {currentPath !== '' && (
                   <button
                     onClick={goUp}
                     className="text-xs text-purple-400 hover:text-purple-300"
@@ -149,14 +190,14 @@ export function ContextLoader({
               </div>
 
               {/* Lista plików */}
-              <div className="max-h-64 overflow-y-auto">
+              <div className="max-h-72 overflow-y-auto">
                 {loadingFiles ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 size={20} className="animate-spin text-zinc-500" />
                   </div>
                 ) : files.length === 0 ? (
                   <div className="py-4 text-center text-zinc-500 text-sm">
-                    Brak plików
+                    {repoInfo ? 'Brak plików w repo' : 'Brak plików'}
                   </div>
                 ) : (
                   files.map((file) => {

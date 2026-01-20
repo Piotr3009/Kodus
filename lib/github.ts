@@ -296,3 +296,113 @@ export async function getRepoTree(
     throw new Error(`Nie udało się pobrać drzewa repo: ${error instanceof Error ? error.message : 'nieznany błąd'}`);
   }
 }
+// ========================================
+// DODAJ TEN KOD NA KOŃCU PLIKU lib/github.ts
+// ========================================
+
+/**
+ * Pobiera kontekst projektu z GitHub dla AI
+ */
+export async function getGitHubProjectContext(
+  owner: string,
+  repo: string,
+  branch: string = 'main'
+): Promise<string> {
+  try {
+    // 1. Pobierz drzewo plików
+    const files = await getRepoTree(owner, repo, branch);
+    
+    // Filtruj i zbuduj drzewo tekstowe
+    const tree = files
+      .map(f => f.path)
+      .filter(p => 
+        !p.includes('node_modules') && 
+        !p.includes('.git') &&
+        !p.includes('.next') &&
+        !p.includes('dist')
+      )
+      .sort()
+      .join('\n');
+    
+    // 2. Pobierz kluczowe pliki
+    const keyFileNames = ['package.json', 'README.md', 'index.html', 'app.js', 'main.js', 'index.js'];
+    const keyContents: string[] = [];
+    
+    for (const keyFileName of keyFileNames) {
+      const found = files.find(f => 
+        f.path === keyFileName || 
+        f.path.endsWith('/' + keyFileName) ||
+        f.name === keyFileName
+      );
+      if (found && found.size < 50000) { // Max 50KB
+        try {
+          const { content } = await getFileContent(owner, repo, found.path, branch);
+          keyContents.push(`--- ${found.path} ---\n${content}`);
+        } catch {
+          // Ignoruj błędy pojedynczych plików
+        }
+      }
+    }
+    
+    // 3. Zbuduj kontekst
+    let context = `REPOZYTORIUM GITHUB: ${owner}/${repo} (branch: ${branch})\n\n`;
+    context += `STRUKTURA PROJEKTU:\n${tree}\n\n`;
+    
+    if (keyContents.length > 0) {
+      context += `KLUCZOWE PLIKI:\n\n${keyContents.join('\n\n')}`;
+    }
+    
+    return context;
+  } catch (error) {
+    throw new Error(`Nie udało się pobrać kontekstu z GitHub: ${error instanceof Error ? error.message : 'nieznany błąd'}`);
+  }
+}
+
+/**
+ * Pobiera listę plików z GitHub do wyświetlenia w UI
+ */
+export async function getGitHubFilesList(
+  owner: string,
+  repo: string,
+  path: string = '',
+  branch: string = 'main'
+): Promise<{ name: string; path: string; type: 'file' | 'dir' }[]> {
+  try {
+    const files = await getRepoFiles(owner, repo, path, branch);
+    
+    return files
+      .filter(f => 
+        !f.name.startsWith('.') || f.name === '.gitignore'
+      )
+      .map(f => ({
+        name: f.name,
+        path: f.path,
+        type: f.type
+      }))
+      .sort((a, b) => {
+        // Foldery najpierw
+        if (a.type === 'dir' && b.type !== 'dir') return -1;
+        if (a.type !== 'dir' && b.type === 'dir') return 1;
+        return a.name.localeCompare(b.name);
+      });
+  } catch (error) {
+    throw new Error(`Nie udało się pobrać listy plików: ${error instanceof Error ? error.message : 'nieznany błąd'}`);
+  }
+}
+
+/**
+ * Pobiera zawartość pliku z GitHub sformatowaną dla kontekstu AI
+ */
+export async function getGitHubFileForContext(
+  owner: string,
+  repo: string,
+  path: string,
+  branch: string = 'main'
+): Promise<string> {
+  try {
+    const { content } = await getFileContent(owner, repo, path, branch);
+    return `--- ${path} ---\n${content}`;
+  } catch (error) {
+    throw new Error(`Nie udało się pobrać pliku: ${error instanceof Error ? error.message : 'nieznany błąd'}`);
+  }
+}

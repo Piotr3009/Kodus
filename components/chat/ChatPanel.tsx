@@ -1,3 +1,7 @@
+// ========================================
+// ZAMIEŃ CAŁY PLIK: components/chat/ChatPanel.tsx
+// ========================================
+
 'use client';
 
 /**
@@ -21,12 +25,14 @@ interface ChatPanelProps {
   onInsertCode?: (code: string, filename?: string, language?: string) => void;
   onOpenArtifact?: (code: string, filename?: string, language?: string) => void;
   defaultMode?: ChatMode;
-  // Nowe propsy dla kontekstu
+  // Propsy dla kontekstu
   contextLoaded?: boolean;
   addedFiles?: AdditionalFile[];
   onLoadContext?: () => Promise<string | null>;
   onAddFile?: (path: string) => Promise<string | null>;
   onRemoveFile?: (path: string) => void;
+  // Info o połączonym repo GitHub - akceptuje dowolny obiekt z owner/repo/branch
+  repoInfo?: { owner: string; repo: string; branch: string } | null;
 }
 
 export function ChatPanel({
@@ -38,12 +44,14 @@ export function ChatPanel({
   onInsertCode,
   onOpenArtifact,
   defaultMode,
-  // Nowe propsy dla kontekstu
+  // Propsy dla kontekstu
   contextLoaded = false,
   addedFiles = [],
   onLoadContext,
   onAddFile,
   onRemoveFile,
+  // GitHub repo info
+  repoInfo,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -77,6 +85,7 @@ export function ChatPanel({
           onLoadContext={onLoadContext}
           onAddFile={onAddFile}
           onRemoveFile={onRemoveFile}
+          repoInfo={repoInfo}
         />
       )}
 
