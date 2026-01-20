@@ -62,6 +62,14 @@ function formatPreferences(preferences: Preference[]): string {
 }
 
 /**
+ * Formatuje tech stack do czytelnego formatu
+ */
+function formatTechStack(techStack?: string[]): string {
+  if (!techStack || techStack.length === 0) return '';
+  return `\nProjekt używa: ${techStack.join(', ')}`;
+}
+
+/**
  * Buduje kontekst z informacjami o projekcie
  */
 function buildContextInfo(context?: AIContext): string {
@@ -74,6 +82,8 @@ function buildContextInfo(context?: AIContext): string {
     if (context.project.description) {
       info += ` - ${context.project.description}`;
     }
+    // Dodaj tech stack projektu
+    info += formatTechStack(context.project.tech_stack);
   }
 
   if (context.editorContent) {

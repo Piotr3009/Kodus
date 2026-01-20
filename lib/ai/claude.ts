@@ -92,6 +92,14 @@ function formatPreferences(preferences: Preference[]): string {
 }
 
 /**
+ * Formatuje tech stack do czytelnego formatu
+ */
+function formatTechStack(techStack?: string[]): string {
+  if (!techStack || techStack.length === 0) return '';
+  return `\n\nProjekt używa: ${techStack.join(', ')}`;
+}
+
+/**
  * Buduje kontekst z informacjami o projekcie i preferencjach
  */
 function buildContextInfo(context?: AIContext): string {
@@ -104,6 +112,9 @@ function buildContextInfo(context?: AIContext): string {
 - Nazwa: ${context.project.name}
 - Opis: ${context.project.description || 'brak'}
 - Repo: ${context.project.repo_url || 'brak'}`;
+
+    // Dodaj tech stack projektu
+    info += formatTechStack(context.project.tech_stack);
   }
 
   if (context.editorContent) {

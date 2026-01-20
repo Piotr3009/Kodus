@@ -16,12 +16,14 @@ import { CodeEditor } from '@/components/editor/CodeEditor';
 import { ModeSelector } from '@/components/chat/ModeSelector';
 import { Button } from '@/components/ui/button';
 import { GitHubSync } from '@/components/github/GitHubSync';
+import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel';
 
 // Hooks
 import { useProjects } from '@/hooks/useProjects';
 import { useChat } from '@/hooks/useChat';
 import { useCodeEditor } from '@/hooks/useCodeEditor';
 import { useGitHub } from '@/hooks/useGitHub';
+import { useArtifacts } from '@/hooks/useArtifacts';
 
 // Typy i stałe
 import type { ChatMode, Project } from '@/lib/types';
@@ -49,6 +51,9 @@ export default function KodusChatPage() {
   // GitHub hook
   const github = useGitHub();
 
+  // Artifacts hook
+  const artifacts = useArtifacts();
+
   // Callback do ładowania plików z GitHub do edytora
   const handleGitHubFilesLoaded = useCallback((files: any[]) => {
     // Dodaj pliki do edytora
@@ -71,6 +76,16 @@ export default function KodusChatPage() {
       setMobileView('editor');
     },
     [editor]
+  );
+
+  // Otwórz kod jako artefakt (panel boczny)
+  const handleOpenArtifact = useCallback(
+    (code: string, filename?: string, language?: string) => {
+      const name = filename || `snippet-${Date.now()}.${language || 'txt'}`;
+      const lang = language || 'typescript';
+      artifacts.addArtifact(name, lang, code);
+    },
+    [artifacts]
   );
 
   // Obsługa skrótów klawiaturowych
@@ -250,6 +265,7 @@ export default function KodusChatPage() {
                 currentlyTyping={chat.currentlyTyping}
                 typingQueue={chat.typingQueue}
                 onInsertCode={handleInsertCode}
+                onOpenArtifact={handleOpenArtifact}
               />
             </div>
 
@@ -297,6 +313,7 @@ export default function KodusChatPage() {
                 currentlyTyping={chat.currentlyTyping}
                 typingQueue={chat.typingQueue}
                 onInsertCode={handleInsertCode}
+                onOpenArtifact={handleOpenArtifact}
               />
             ) : (
               <CodeEditor
@@ -329,6 +346,17 @@ export default function KodusChatPage() {
           </div>
         </div>
       </main>
+
+      {/* Panel artefaktów (wysuwany z prawej) */}
+      <ArtifactPanel
+        isOpen={artifacts.isOpen}
+        artifacts={artifacts.artifacts}
+        activeArtifact={artifacts.activeArtifact}
+        onClose={artifacts.closePanel}
+        onSelectArtifact={artifacts.setActiveArtifact}
+        onRemoveArtifact={artifacts.removeArtifact}
+        onInsertToEditor={handleInsertCode}
+      />
     </div>
   );
 }
