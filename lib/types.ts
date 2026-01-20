@@ -461,3 +461,294 @@ export interface UseArtifactsReturn {
   togglePanel: () => void;
   clearArtifacts: () => void;
 }
+
+// ==========================================
+// TYPY DLA AUTO-SAVE TABEL DB
+// ==========================================
+
+// Cel promptu: Claude Code, Codex CLI, Gemini
+export type LLMTarget = 'claude_code' | 'codex' | 'gemini';
+
+// Kategoria zasady projektu
+export type RuleCategory = 'code_style' | 'architecture' | 'testing' | 'security' | 'naming' | 'other';
+
+// Kategoria tech stacku
+export type TechCategory = 'framework' | 'library' | 'language' | 'database' | 'state' | 'styling' | 'testing' | 'build' | 'other';
+
+// Status kamienia milowego
+export type MilestoneStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled';
+
+// Priorytet elementu backlog
+export type BacklogPriority = 'low' | 'medium' | 'high' | 'critical';
+
+// Status elementu backlog
+export type BacklogStatus = 'idea' | 'planned' | 'in_progress' | 'done' | 'rejected';
+
+// Decyzja architektoniczna
+export interface Decision {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  reason: string;
+  alternatives?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Historia bugów
+export interface BugHistory {
+  id: string;
+  project_id: string;
+  description: string;
+  solution: string;
+  file_path?: string;
+  line_number?: number;
+  severity?: 'low' | 'medium' | 'high' | 'critical';
+  created_at?: string;
+}
+
+// Wygenerowany prompt
+export interface Prompt {
+  id: string;
+  name: string;
+  llm_target: LLMTarget;
+  content: string;
+  description?: string;
+  tags?: string[];
+  use_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Zasada projektu
+export interface ProjectRule {
+  id: string;
+  project_id: string;
+  rule: string;
+  category: RuleCategory;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+// Element tech stacku
+export interface TechStackItem {
+  id: string;
+  project_id: string;
+  name: string;
+  category: TechCategory;
+  version?: string;
+  created_at?: string;
+}
+
+// Zasada stylu kodu
+export interface StyleGuide {
+  id: string;
+  project_id: string;
+  rule: string;
+  example_good?: string;
+  example_bad?: string;
+  language?: string;
+  created_at?: string;
+}
+
+// Feedback użytkownika na odpowiedź AI
+export interface UserFeedback {
+  id: string;
+  llm_response_id: string;
+  rating: 1 | 2 | 3 | 4 | 5;
+  comment?: string;
+  created_at?: string;
+}
+
+// Feedback z code review
+export interface ReviewFeedback {
+  id: string;
+  task_id: string;
+  reviewer: LLMSource;
+  feedback_type: 'bug' | 'optimization' | 'edge_case' | 'best_practice' | 'ui' | 'ux' | 'a11y';
+  description: string;
+  suggestion?: string;
+  was_applied?: boolean;
+  created_at?: string;
+}
+
+// Element backlogu
+export interface BacklogItem {
+  id: string;
+  project_id: string;
+  title: string;
+  description?: string;
+  priority: BacklogPriority;
+  status: BacklogStatus;
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Dokumentacja
+export interface Doc {
+  id: string;
+  project_id: string;
+  title: string;
+  content: string;
+  doc_type: 'readme' | 'api' | 'guide' | 'changelog' | 'other';
+  file_path?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Kamień milowy
+export interface Milestone {
+  id: string;
+  project_id: string;
+  title: string;
+  description?: string;
+  status: MilestoneStatus;
+  target_date?: string;
+  completed_date?: string;
+  created_at?: string;
+}
+
+// Embedding dla semantic search
+export interface MemoryEmbedding {
+  id: string;
+  project_id?: string;
+  content: string;
+  content_type: 'code' | 'decision' | 'bug' | 'rule' | 'doc' | 'conversation';
+  source_id?: string;
+  embedding?: number[];
+  created_at?: string;
+}
+
+// ==========================================
+// TYPY DLA AUTO-SAVE METADATA
+// ==========================================
+
+// Wzorce do auto-wykrywania
+export type AutoSavePatternType = 'decision' | 'bug' | 'prompt' | 'rule' | 'tech' | 'feedback';
+
+// Metadata odpowiedzi AI z informacją o tokenach i auto-save
+export interface AIResponseMetadata {
+  tokensUsed: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  detectedPatterns: AutoSavePatternType[];
+  autoSaved: {
+    table: string;
+    id: string;
+    type: AutoSavePatternType;
+  }[];
+}
+
+// Rozszerzona odpowiedź AI z metadatą
+export interface AIResponseWithMetadata {
+  content: string;
+  metadata: AIResponseMetadata;
+}
+
+// Input do zapisania odpowiedzi LLM
+export interface SaveLLMResponseInput {
+  task_id?: string;
+  conversation_id?: string;
+  llm_source: LLMSource;
+  prompt_used: string;
+  response: string;
+  tokens_used: number;
+  input_tokens?: number;
+  output_tokens?: number;
+}
+
+// Input do zapisania decyzji
+export interface SaveDecisionInput {
+  project_id: string;
+  title: string;
+  description: string;
+  reason: string;
+  alternatives?: string;
+}
+
+// Input do zapisania buga
+export interface SaveBugInput {
+  project_id: string;
+  description: string;
+  solution: string;
+  file_path?: string;
+  line_number?: number;
+  severity?: 'low' | 'medium' | 'high' | 'critical';
+}
+
+// Input do zapisania promptu
+export interface SavePromptInput {
+  name: string;
+  llm_target: LLMTarget;
+  content: string;
+  description?: string;
+  tags?: string[];
+}
+
+// Input do zapisania zasady projektu
+export interface SaveProjectRuleInput {
+  project_id: string;
+  rule: string;
+  category: RuleCategory;
+}
+
+// Input do zapisania tech stacku
+export interface SaveTechStackInput {
+  project_id: string;
+  name: string;
+  category: TechCategory;
+  version?: string;
+}
+
+// Input do zapisania style guide
+export interface SaveStyleGuideInput {
+  project_id: string;
+  rule: string;
+  example_good?: string;
+  example_bad?: string;
+  language?: string;
+}
+
+// Input do zapisania feedbacku użytkownika
+export interface SaveUserFeedbackInput {
+  llm_response_id: string;
+  rating: 1 | 2 | 3 | 4 | 5;
+  comment?: string;
+}
+
+// Input do zapisania review feedbacku
+export interface SaveReviewFeedbackInput {
+  task_id: string;
+  reviewer: LLMSource;
+  feedback_type: 'bug' | 'optimization' | 'edge_case' | 'best_practice' | 'ui' | 'ux' | 'a11y';
+  description: string;
+  suggestion?: string;
+}
+
+// Input do zapisania backlogu
+export interface SaveBacklogInput {
+  project_id: string;
+  title: string;
+  description?: string;
+  priority?: BacklogPriority;
+  tags?: string[];
+}
+
+// Input do zapisania dokumentacji
+export interface SaveDocInput {
+  project_id: string;
+  title: string;
+  content: string;
+  doc_type: 'readme' | 'api' | 'guide' | 'changelog' | 'other';
+  file_path?: string;
+}
+
+// Input do zapisania milestone
+export interface SaveMilestoneInput {
+  project_id: string;
+  title: string;
+  description?: string;
+  target_date?: string;
+}

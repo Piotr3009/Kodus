@@ -4,7 +4,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { ChatMessage, AIContext, Preference } from '../types';
+import type { ChatMessage, AIContext, Preference, AIResponseWithMetadata } from '../types';
 
 // Leniwa inicjalizacja klienta Google AI
 let genaiClient: GoogleGenerativeAI | null = null;
@@ -124,6 +124,7 @@ function buildContextInfo(context?: AIContext): string {
 
 /**
  * Wywołuje Gemini do oceny UI/UX
+ * Zwraca odpowiedź z metadanymi o tokenach
  */
 export async function callGemini(
   userMessage: string,
@@ -131,7 +132,7 @@ export async function callGemini(
   gptResponse: string,
   history: ChatMessage[],
   context?: AIContext
-): Promise<string> {
+): Promise<AIResponseWithMetadata> {
   const contextInfo = buildContextInfo(context);
   const historyContext = formatHistoryForGemini(history);
 
@@ -150,15 +151,48 @@ ${gptResponse}
 Daj swój feedback z perspektywy UI/UX. Bądź konkretny i praktyczny:`;
 
   try {
-   
+
     const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const result = await model.generateContent(prompt);
     const response = result.response;
 
-    return response.text() || 'Nie mogłem wygenerować feedbacku UI/UX.';
+    const content = response.text() || 'Nie mogłem wygenerować feedbacku UI/UX.';
+
+    // Gemini zwraca usage metadata jeśli jest dostępna
+    const usageMetadata = response.usageMetadata;
+    const inputTokens = usageMetadata?.promptTokenCount || 0;
+    const outputTokens = usageMetadata?.candidatesTokenCount || 0;
+    const tokensUsed = usageMetadata?.totalTokenCount || (inputTokens + outputTokens);
+
+    console.log(`[GEMINI] Tokeny: input=${inputTokens}, output=${outputTokens}, total=${tokensUsed}`);
+
+    return {
+      content,
+      metadata: {
+        tokensUsed,
+        inputTokens,
+        outputTokens,
+        detectedPatterns: [],
+        autoSaved: [],
+      },
+    };
   } catch (error) {
     console.error('Błąd Gemini:', error);
     throw new Error(`Błąd komunikacji z Gemini: ${error instanceof Error ? error.message : 'nieznany błąd'}`);
   }
+}
+
+/**
+ * Wywołuje Gemini (stara wersja dla kompatybilności - zwraca string)
+ */
+export async function callGeminiSimple(
+  userMessage: string,
+  claudeResponse: string,
+  gptResponse: string,
+  history: ChatMessage[],
+  context?: AIContext
+): Promise<string> {
+  const result = await callGemini(userMessage, claudeResponse, gptResponse, history, context);
+  return result.content;
 }
